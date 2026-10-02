@@ -11,7 +11,8 @@ App :: struct {
 	update_systems:  [dynamic]proc(),
 	draw_systems:    [dynamic]proc(),
 	plugins:         [dynamic]proc(app: ^App),
-	entities:        map[int][dynamic]struct{},
+	entities:        map[u32][dynamic]struct{},
+	storages:        map[typeid]rawptr,
 }
 
 add_system :: proc(app: ^App, schedule: int, system: proc()) {
@@ -27,13 +28,6 @@ add_system :: proc(app: ^App, schedule: int, system: proc()) {
 
 add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 	append(&app.plugins, plugin)
-}
-
-spawn_entity :: proc(app: ^App, components: [dynamic]struct{}) {
-	entity_len := len(&app.entities)
-
-	app.entities[entity_len] = components
-
 }
 
 run :: proc(app: ^App) {
