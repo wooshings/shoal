@@ -11,8 +11,7 @@ App :: struct {
 	update_systems:  [dynamic]proc(),
 	draw_systems:    [dynamic]proc(),
 	plugins:         [dynamic]proc(app: ^App),
-	entities:        map[u32][dynamic]struct{},
-	storages:        map[typeid]rawptr,
+	entities:        [dynamic]Entity,
 }
 
 add_system :: proc(app: ^App, schedule: int, system: proc()) {
@@ -30,7 +29,7 @@ add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 	append(&app.plugins, plugin)
 }
 
-run :: proc(app: ^App) {
+run :: proc(app: ^App, entity_limit: int = 1000) {
 	rl.InitWindow(800, 600, "shoal window")
 	defer rl.CloseWindow()
 
