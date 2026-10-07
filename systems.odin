@@ -3,7 +3,7 @@ package shoal
 import rl "vendor:raylib"
 
 DefaultPlugin :: proc(app: ^App) {
-	add_system(app, UPDATE, draw_sprite)
+	add_system(app, DRAW, draw_sprite)
 }
 
 draw_sprite :: proc() {
