@@ -1,6 +1,6 @@
 # shoal
 
-![shoal logo](assets/logo.svg)
+<img src="assets/logo.svg" alt="shoal logo" width="2em" height="2em">
 
 my silly little ecs engine for odin and raylib :3
 
