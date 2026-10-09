@@ -1,5 +1,7 @@
 # shoal
 
+![shoal logo](assets/logo.svg)
+
 my silly little ecs engine for odin and raylib :3
 
 ## contents
@@ -90,7 +92,7 @@ main :: proc() {
 
 and give it new components with `add_component()`
 
-```od\
+```odin
 main :: proc() {
   ecs.add_component(entity, &Example) // make sure to pass a reference to the storage, not the component type
 }
