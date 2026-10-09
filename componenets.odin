@@ -2,13 +2,13 @@ package shoal
 
 import rl "vendor:raylib"
 
-Sprite :: struct {
+SpriteComponent :: struct {
 	texture: rl.Texture2D,
 }
-sprites: Storage(Sprite)
+Sprite: Storage(SpriteComponent)
 
-Transform :: struct {
+TransformComponent :: struct {
 	translation: rl.Vector2,
 	rotation:    int,
 }
-transforms: Storage(Transform)
+Transform: Storage(TransformComponent)
