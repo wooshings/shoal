@@ -15,6 +15,17 @@ spawn_entity :: proc(app: ^App) -> Entity {
 	return entity
 }
 
-add_component :: proc(app: ^App, entity: Entity, storage: ^Storage($T)) {
+add_component :: proc(entity: Entity, storage: ^Storage($T)) {
 	storage.data[entity] = T{}
+}
+
+slice :: proc(storage: ^Storage($T)) -> map[Entity]T {
+	return storage.data
+}
+
+get_component :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
+	if c, exists := &storage.data[entity]; exists {
+		return c
+	}
+	return new(T)
 }
