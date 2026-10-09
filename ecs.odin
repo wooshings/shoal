@@ -1,5 +1,6 @@
 package shoal
 
+import "core:strings"
 import rl "vendor:raylib"
 
 STARTUP := 0
@@ -30,15 +31,18 @@ add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 }
 
 run :: proc(app: ^App, entity_limit: int = 1000) {
-	rl.InitWindow(800, 600, "shoal window")
-	defer rl.CloseWindow()
-
 	for p in app.plugins {
 		p(app)
 	}
-
 	for i in app.startup_systems {i()}
+
+	_, window := single(&Window)
+	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
+	defer rl.CloseWindow()
+
+	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
+		rl.ClearBackground(rl.WHITE)
 		for i in app.update_systems {i()}
 		rl.BeginDrawing()
 		for i in app.draw_systems {i()}

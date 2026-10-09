@@ -15,12 +15,28 @@ spawn_entity :: proc(app: ^App) -> Entity {
 	return entity
 }
 
-add_component :: proc(entity: Entity, storage: ^Storage($T)) {
+add_component :: proc {
+	add_fresh_component,
+	add_component_with_data,
+}
+
+add_fresh_component :: proc(entity: Entity, storage: ^Storage($T)) {
 	storage.data[entity] = T{}
+}
+
+add_component_with_data :: proc(entity: Entity, storage: ^Storage($T), component: T) {
+	storage.data[entity] = component
 }
 
 slice :: proc(storage: ^Storage($T)) -> map[Entity]T {
 	return storage.data
+}
+
+single :: proc(storage: ^Storage($T)) -> (Entity, ^T) {
+	for i, &v in slice(storage) {
+		return i, &v
+	}
+	return Entity{}, new(T)
 }
 
 get_component :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
