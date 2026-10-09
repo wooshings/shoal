@@ -3,9 +3,10 @@ package shoal
 import rl "vendor:raylib"
 
 WindowComponent :: struct {
-	width:  i32,
-	height: i32,
-	title:  string,
+	width:      i32,
+	height:     i32,
+	title:      string,
+	background: rl.Color,
 }
 Window: Storage(WindowComponent)
 

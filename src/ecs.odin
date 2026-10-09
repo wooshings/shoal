@@ -42,7 +42,7 @@ run :: proc(app: ^App, entity_limit: int = 1000) {
 
 	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
-		rl.ClearBackground(rl.WHITE)
+		rl.ClearBackground(window.background)
 		for i in app.update_systems {i()}
 		rl.BeginDrawing()
 		for i in app.draw_systems {i()}
