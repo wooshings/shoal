@@ -37,15 +37,15 @@ main :: proc() {
 ### systems
 systems are procedures that run on set schedules
 
-a schedule just determines when a producure runs
-schedules are:
-- STARTUP
-- UPDATE
-- DRAW
+a schedule just determines when a producure runs\
+schedules are:\
+- STARTUP\
+- UPDATE\
+- DRAW\
 
-`STARTUP` runs once at the start of an app
-`UPDATE` runs every frame
-`DRAW` runs every frame *after* update, and makes draw calls to raylib
+`STARTUP` runs once at the start of an app\
+`UPDATE` runs every frame\
+`DRAW` runs every frame *after* update, and makes draw calls to raylib\
 
 ```odin
 main :: proc() {
@@ -65,7 +65,7 @@ example_update :: proc() {
 ```
 
 ### components
-components are just structs with data, and kept with other components of that type in `Storage`.
+components are just structs with data, and kept with other components of that type in `Storage`.\
 create a new component
 
 ```odin
