@@ -38,10 +38,10 @@ main :: proc() {
 systems are procedures that run on set schedules
 
 a schedule just determines when a producure runs\
-schedules are:\
-- STARTUP\
-- UPDATE\
-- DRAW\
+schedules are:
+- STARTUP
+- UPDATE
+- DRAW
 
 `STARTUP` runs once at the start of an app\
 `UPDATE` runs every frame\
@@ -90,7 +90,7 @@ main :: proc() {
 
 and give it new components with `add_component()`
 
-```odin
+```od\
 main :: proc() {
   ecs.add_component(entity, &Example) // make sure to pass a reference to the storage, not the component type
 }
