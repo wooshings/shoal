@@ -2,6 +2,21 @@
 
 my silly little ecs engine for odin and raylib :3
 
+## contents
+- [install](#install)
+- [usage](#usage)
+
+## install
+clone this repo in your project directory
+
+`git clone https://git.egfk.net/harper/shoal`
+
+and import the package
+
+```odin
+import ecs "shoal/src"
+```
+
 ## usage
 first create a new app struct. this is where your systems and plugins live.
 
@@ -19,7 +34,37 @@ main :: proc() {
 }
 ```
 
-### component
+### systems
+systems are procedures that run on set schedules
+
+a schedule just determines when a producure runs
+schedules are:
+- STARTUP
+- UPDATE
+- DRAW
+
+`STARTUP` runs once at the start of an app
+`UPDATE` runs every frame
+`DRAW` runs every frame *after* update, and makes draw calls to raylib
+
+```odin
+main :: proc() {
+  ecs.add_system(&app, ecs.STARTUP, example_startup)
+  ecs.add_system(&app, ecs.UPDATE, example_update)
+}
+
+example_startup :: proc() {
+  // system that runs once
+  // ...
+}
+
+example_update :: proc() {
+  // system that runs every frame
+  // ...
+}
+```
+
+### components
 components are just structs with data, and kept with other components of that type in `Storage`.
 create a new component
 
@@ -69,3 +114,20 @@ main :: proc() {
   entity_id, component := ecs.single(&Example)
 }
 ```
+ ### plugins
+plugins are just a procedure that takes `App` as a parameter, meaning it can make changes to `app`, just like main()
+
+```odin
+ExamplePlugin :: proc(app: ^App) {
+  ecs.add_system(app, ecs.STARTUP, some_plugin_system)
+}
+```
+
+```odin
+main :: proc() {
+  ecs.add_plugin(&app, ecs.DefaultPlugin)
+  ecs.add_plugin(&app, ExamplePlugin)
+}
+```
+
+plugins make your scripts very reuseable. in fact, much of shoal's default behaviors come from plugins via `DefaultPlugin()`
