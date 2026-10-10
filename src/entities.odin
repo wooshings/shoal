@@ -44,7 +44,7 @@ single :: proc(storage: ^Storage($T)) -> (Entity, ^T) {
 	for i, &v in slice(storage) {
 		return i, &v
 	}
-	return Entity{}, new(T)
+	return 0, nil
 }
 
 // get component of type from entity
@@ -53,9 +53,4 @@ get_component :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
 		return &storage.data[entity]
 	}
 	return new(T)
-}
-
-// alias for direct mutation access
-get_component_with_ref :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
-	return get_component(entity, storage)
 }
