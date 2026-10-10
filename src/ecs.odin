@@ -13,15 +13,18 @@ App :: struct {
 	entities: [dynamic]Entity,
 }
 
+// add a new system to the app that will run based on the provided schedule
 add_system :: proc(app: ^App, schedule: int, system: proc()) {
 	append(&app.systems[schedule], system)
 }
 
+// add a new plugin to the app. a modular way to add new functionality from beyond the main procedure
 add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 	append(&app.plugins, plugin)
 }
 
-run :: proc(app: ^App, entity_limit: int = 1000) {
+// run the app
+run :: proc(app: ^App) {
 	for p in app.plugins {
 		p(app)
 	}

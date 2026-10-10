@@ -13,7 +13,7 @@ DefaultPlugin :: proc(app: ^App) {
 	)
 }
 
-
+@(private)
 draw_sprite :: proc() {
 	for i, &v in slice(&Sprite) {
 		sprite_transform := get_component(i, &Transform)
