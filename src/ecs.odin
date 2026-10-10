@@ -39,9 +39,9 @@ run :: proc(app: ^App) {
 
 	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
-		rl.ClearBackground(window.background)
 		for i in app.systems[UPDATE] {i()}
 		rl.BeginDrawing()
+		rl.ClearBackground(window.background)
 		for i in app.systems[DRAW] {i()}
 		rl.EndDrawing()
 	}

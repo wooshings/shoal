@@ -9,7 +9,7 @@ DefaultPlugin :: proc(app: ^App) {
 	add_component(
 		display,
 		&Window,
-		WindowComponent{width = 800, height = 600, title = "shoal window"},
+		WindowComponent{width = 800, height = 600, title = "shoal window", background = rl.BLACK},
 	)
 }
 
