@@ -15,6 +15,9 @@ App :: struct {
 
 // add a new system to the app that will run based on the provided schedule
 add_system :: proc(app: ^App, schedule: int, system: proc()) {
+	if _, ok := app.systems[schedule]; !ok {
+		app.systems[schedule] = [dynamic]proc(){}
+	}
 	append(&app.systems[schedule], system)
 }
 

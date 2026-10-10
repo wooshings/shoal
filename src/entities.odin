@@ -49,8 +49,13 @@ single :: proc(storage: ^Storage($T)) -> (Entity, ^T) {
 
 // get component of type from entity
 get_component :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
-	if c, exists := &storage.data[entity]; exists {
-		return c
+	if _, exists := storage.data[entity]; exists {
+		return &storage.data[entity]
 	}
 	return new(T)
+}
+
+// alias for direct mutation access
+get_component_with_ref :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
+	return get_component(entity, storage)
 }
