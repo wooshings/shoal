@@ -3,6 +3,8 @@ package shoal
 import rl "vendor:raylib"
 
 DefaultPlugin :: proc(app: ^App) {
+	app.systems = make(map[int][dynamic]proc())
+
 	add_system(app, DRAW, draw_sprite)
 
 	display := spawn_entity(app)
