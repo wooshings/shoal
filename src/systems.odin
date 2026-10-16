@@ -3,9 +3,9 @@ package shoal
 import rl "vendor:raylib"
 
 DefaultPlugin :: proc(app: ^App) {
-	app.systems = make(map[int][dynamic]proc())
-
 	add_system(app, DRAW, draw_sprite)
+	add_system(app, UPDATE, signal_system)
+	add_system(app, UPDATE, run_timers)
 
 	display := spawn_entity(app)
 	add_component(
