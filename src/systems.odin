@@ -17,8 +17,10 @@ DefaultPlugin :: proc(app: ^App) {
 
 @(private)
 draw_sprite :: proc() {
-	for i, &v in slice(&Sprite) {
-		sprite_transform := get_component(i, &Transform)
+	components := slice(&Sprite)
+	entities := slice_entity(&Sprite)
+	for &v, i in components {
+		sprite_transform := get_component(entities[i], &Transform)
 		rl.DrawTexture(
 			v.texture,
 			i32(sprite_transform.translation.x),

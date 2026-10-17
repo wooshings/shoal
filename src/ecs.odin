@@ -7,6 +7,13 @@ STARTUP :: 0
 UPDATE :: 1
 DRAW :: 2
 
+@(private)
+sparse_entity_limit: int
+
+get_entity_limit :: proc() -> int {
+	return sparse_entity_limit
+}
+
 App :: struct {
 	systems:  map[int][dynamic]proc(),
 	plugins:  [dynamic]proc(app: ^App),
@@ -27,13 +34,14 @@ add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 }
 
 // run the app
-run :: proc(app: ^App) {
+run :: proc(app: ^App, entity_limit: int = 1000) {
+	sparse_entity_limit = entity_limit
 	for p in app.plugins {
 		p(app)
 	}
 	for i in app.systems[STARTUP] {i()}
 
-	_, window := single(&Window)
+	window, _ := single(&Window)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
 	defer rl.CloseWindow()
 

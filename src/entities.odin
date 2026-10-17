@@ -5,7 +5,9 @@ import "core:fmt"
 Entity :: distinct u32
 
 Storage :: struct($T: typeid) {
-	data: map[Entity]T,
+	dense:    [dynamic]T,
+	entities: [dynamic]Entity,
+	sparse:   map[Entity]int,
 }
 
 // adds a new entity id to app and returns it
@@ -24,33 +26,37 @@ add_component :: proc {
 
 // initializes new component of type and add to Storage
 add_fresh_component :: proc(entity: Entity, storage: ^Storage($T)) {
-	storage.data[entity] = T{}
+	append(&storage.dense, T{})
+	append(&storage.entities, entity)
+	i := len(storage.dense) - 1
+	defer storage.sparse[entity] = i
 }
 
 // creates a copy of component type with data and add to Storage
 add_component_with_data :: proc(entity: Entity, storage: ^Storage($T), component: T) {
-	storage.data[entity] = component
+	append(&storage.dense, component)
+	append(&storage.entities, entity)
+	i := len(storage.dense) - 1
+	defer storage.sparse[entity] = i
 }
 
 // get components saved in Storage
 // returns storage.data
-slice :: proc(storage: ^Storage($T)) -> map[Entity]T {
-	return storage.data
+slice :: proc(storage: ^Storage($T)) -> [dynamic]T {
+	return storage.dense
+}
+
+slice_entity :: proc(storage: ^Storage($T)) -> [dynamic]Entity {
+	return storage.entities
 }
 
 // get component saved in Storage
 // returns Entity and component of type
-single :: proc(storage: ^Storage($T)) -> (Entity, ^T) {
-	for i, &v in slice(storage) {
-		return i, &v
-	}
-	return 0, nil
+single :: proc(storage: ^Storage($T)) -> (^T, Entity) {
+	return &storage.dense[0], storage.entities[0]
 }
 
 // get component of type from entity
 get_component :: proc(entity: Entity, storage: ^Storage($T)) -> ^T {
-	if _, exists := storage.data[entity]; exists {
-		return &storage.data[entity]
-	}
-	return new(T)
+	return &storage.dense[storage.sparse[entity]]
 }
