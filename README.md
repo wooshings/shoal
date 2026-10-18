@@ -30,7 +30,7 @@ app: ecs.App
 
 you can run your app with `run()`. run takes a reference to your app to run it's systems.
 
-``` odin
+```odin
 main :: proc() {
   ecs.run(&app)
 }
@@ -103,8 +103,10 @@ since components are saved in storage next to their entity, you can loop through
 
 ```odin
 main :: proc() {
-  for entity_id, component in ecs.slice(&Example) {
-    //...
+  components := ecs.slice(&Example)
+  entities := ecs.slice_entity(&Example)
+  for v, i in components {
+    e := entities[i]    // get entity that owns the component
   }
 }
 ```
@@ -113,7 +115,7 @@ or if you know your storage only has one entry use `single()`
 
 ```odin
 main :: proc() {
-  entity_id, component := ecs.single(&Example)
+  component, entity_id := ecs.single(&Example)
 }
 ```
  ### plugins

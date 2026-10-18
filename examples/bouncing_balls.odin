@@ -1,6 +1,5 @@
 package main
 
-import "core:fmt"
 import "core:math/rand"
 import "core:strconv"
 import "core:strings"
@@ -9,7 +8,7 @@ import rl "vendor:raylib"
 
 app: ecs.App
 
-ball_count: int = 1000
+ball_count: int = 10000
 BallComponent :: struct {
 	radius: f32,
 	speed:  f32,
@@ -27,18 +26,14 @@ main :: proc() {
 }
 
 setup_window :: proc() {
-	_, window := ecs.single(&ecs.Window)
+	window, _ := ecs.single(&ecs.Window)
 	window.background = rl.BLACK
 }
 
 spawn_balls :: proc() {
 	for i in 0 ..< ball_count {
 		ball := ecs.spawn_entity(&app)
-		ecs.add_component(
-			ball,
-			&Ball,
-			BallComponent{radius = 10, speed = rand.float32_range(4, 6)},
-		)
+		ecs.add_component(ball, &Ball, BallComponent{radius = 5, speed = rand.float32_range(4, 6)})
 		ecs.add_component(
 			ball,
 			&ecs.Transform,
@@ -51,10 +46,12 @@ spawn_balls :: proc() {
 }
 
 update_balls :: proc() {
-	_, window := ecs.single(&ecs.Window)
+	window, _ := ecs.single(&ecs.Window)
 
-	for entity, ball in ecs.slice(&Ball) {
-		transform := ecs.get_component(entity, &ecs.Transform)
+	balls := ecs.slice(&Ball)
+	entities := ecs.slice_entity(&Ball)
+	for ball, i in balls {
+		transform := ecs.get_component(entities[i], &ecs.Transform)
 		pos := transform.translation
 
 		if pos.x <= 0 || pos.x >= f32(window.width) || pos.y <= 0 || pos.y >= f32(window.height) {
@@ -63,13 +60,14 @@ update_balls :: proc() {
 		dir := rl.Vector2Rotate(rl.Vector2{0, ball.speed}, transform.rotation)
 
 		transform.translation += dir
-		fmt.println(transform.rotation)
 	}
 }
 
 draw_balls :: proc() {
-	for entity, ball in ecs.slice(&Ball) {
-		transform := ecs.get_component(entity, &ecs.Transform)
+	balls := ecs.slice(&Ball)
+	entities := ecs.slice_entity(&Ball)
+	for ball, i in balls {
+		transform := ecs.get_component(entities[i], &ecs.Transform)
 		rl.DrawCircle(
 			i32(transform.translation.x),
 			i32(transform.translation.y),
@@ -80,7 +78,9 @@ draw_balls :: proc() {
 }
 
 show_framerate :: proc() {
-	buf: [19]byte
-	framerate := strconv.write_int(buf[:], i64(1 / rl.GetFrameTime()), 10)
+	fps_buf: [19]byte
+	framerate := strconv.write_int(fps_buf[:], i64(1 / rl.GetFrameTime()), 10)
 	rl.DrawText(strings.clone_to_cstring(framerate), 0, 0, 24, rl.WHITE)
+	rl.DrawText("   fps", 0, 0, 24, rl.WHITE)
+	rl.DrawText("10000 balls", 0, 24, 24, rl.WHITE)
 }
