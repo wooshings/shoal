@@ -11,11 +11,12 @@ Timer :: struct {
 @(private)
 timers: map[string]Timer
 
-start_timer :: proc(time: f32, signal: string) -> int {
-	new_timer: Timer
-	new_timer.lifetime = time
+start_timer :: proc(time: f32, signal: string) {
+	new_timer := Timer {
+		lifetime = time,
+		signal   = signal,
+	}
 	timers[signal] = new_timer
-	return len(timers)
 }
 
 get_timer :: proc(signal: string) -> Timer {
@@ -28,7 +29,7 @@ get_timer :: proc(signal: string) -> Timer {
 run_timers :: proc() {
 	for i, &t in timers {
 		t.lifetime -= rl.GetFrameTime()
-		if t.lifetime <= 0 {
+		if t.lifetime <= rl.GetFrameTime() {
 			timers[i] = Timer{}
 			if t.signal != "" {
 				write(t.signal)
