@@ -10,6 +10,11 @@ WindowComponent :: struct {
 }
 Window: Storage(WindowComponent)
 
+CursorComponent :: struct {
+	position: rl.Vector2,
+}
+Cursor: Storage(CursorComponent)
+
 SpriteComponent :: struct {
 	texture: rl.Texture2D,
 }
