@@ -6,6 +6,7 @@ DefaultPlugin :: proc(app: ^App) {
 	add_system(app, DRAW, draw_sprite)
 	add_system(app, UPDATE, signal_system)
 	add_system(app, UPDATE, run_timers)
+	add_system(app, UPDATE, update_cursor_position)
 
 	display := spawn_entity(app)
 	add_component(
@@ -13,6 +14,15 @@ DefaultPlugin :: proc(app: ^App) {
 		&Window,
 		WindowComponent{width = 800, height = 600, title = "shoal window", background = rl.BLACK},
 	)
+
+	cursor := spawn_entity(app)
+	add_component(cursor, &Cursor)
+}
+
+@(private)
+update_cursor_position :: proc() {
+	cursor, _ := single(&Cursor)
+	cursor.position = rl.GetMousePosition()
 }
 
 @(private)

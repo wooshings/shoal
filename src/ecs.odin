@@ -1,11 +1,12 @@
 package shoal
 
+import ui "../ui"
 import "core:strings"
+import "core:thread"
+import ml "vendor:microui"
 import rl "vendor:raylib"
 
-STARTUP :: 0
-UPDATE :: 1
-DRAW :: 2
+update_pool: thread.Pool
 
 @(private)
 sparse_entity_limit: int
@@ -36,6 +37,7 @@ add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 // run the app
 run :: proc(app: ^App, entity_limit: int = 1000) {
 	sparse_entity_limit = entity_limit
+
 	for p in app.plugins {
 		p(app)
 	}
@@ -43,14 +45,16 @@ run :: proc(app: ^App, entity_limit: int = 1000) {
 
 	window, _ := single(&Window)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
+	ui.ui_ctx = ui.init_scope()
 	defer rl.CloseWindow()
 
 	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
+		defer free_all(context.temp_allocator)
 		for i in app.systems[UPDATE] {i()}
-		rl.BeginDrawing()
+		rl.BeginDrawing(); defer rl.EndDrawing()
+		ui.begin_scope()
 		rl.ClearBackground(window.background)
 		for i in app.systems[DRAW] {i()}
-		rl.EndDrawing()
 	}
 }
