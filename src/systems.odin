@@ -1,12 +1,19 @@
 package shoal
 
+import "core:strings"
 import rl "vendor:raylib"
 
 DefaultPlugin :: proc(app: ^App) {
+	add_system(app, STARTUP, startup_window)
 	add_system(app, DRAW, draw_sprite)
 	add_system(app, UPDATE, signal_system)
 	add_system(app, UPDATE, run_timers)
 	add_system(app, UPDATE, update_cursor_position)
+	add_system(app, PRE_DRAW, proc() {rl.BeginDrawing()
+		window, _ := single(&Window)
+		rl.ClearBackground(window.background)})
+	add_system(app, POST_DRAW, proc() {rl.EndDrawing()})
+	add_system(app, DESTROY, proc() {rl.CloseWindow()})
 
 	display := spawn_entity(app)
 	add_component(
@@ -38,4 +45,11 @@ draw_sprite :: proc() {
 			rl.WHITE,
 		)
 	}
+}
+
+@(private)
+startup_window :: proc() {
+	window, _ := single(&Window)
+	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
+	rl.SetTargetFPS(60)
 }

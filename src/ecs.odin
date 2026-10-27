@@ -1,6 +1,5 @@
 package shoal
 
-import ui "../ui"
 import "core:strings"
 import "core:thread"
 import ml "vendor:microui"
@@ -34,27 +33,28 @@ add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 	append(&app.plugins, plugin)
 }
 
-// run the app
-run :: proc(app: ^App, entity_limit: int = 1000) {
-	sparse_entity_limit = entity_limit
+get_system :: proc(app: ^App, schedule: int) -> [dynamic]proc() {
+	if systems, ok := app.systems[schedule]; ok && len(systems) > 0 {
+		return systems
+	}
+	return [dynamic]proc(){}
+}
 
+// run the app
+run :: proc(app: ^App) {
 	for p in app.plugins {
 		p(app)
 	}
 	for i in app.systems[STARTUP] {i()}
 
-	window, _ := single(&Window)
-	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
-	ui.ui_ctx = ui.init_scope()
-	defer rl.CloseWindow()
-
-	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
-		defer free_all(context.temp_allocator)
-		for i in app.systems[UPDATE] {i()}
-		rl.BeginDrawing(); defer rl.EndDrawing()
-		ui.begin_scope()
-		rl.ClearBackground(window.background)
-		for i in app.systems[DRAW] {i()}
+		for i in get_system(app, PRE_UPDATE) {i()}
+		for i in get_system(app, UPDATE) {i()}
+		for i in get_system(app, POST_UPDATE) {i()}
+		for i in get_system(app, PRE_DRAW) {i()}
+		for i in get_system(app, DRAW) {i()}
+		for i in get_system(app, POST_DRAW) {i()}
 	}
+
+	for i in get_system(app, DESTROY) {i()}
 }

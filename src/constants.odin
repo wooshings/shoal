@@ -1,8 +1,13 @@
 package shoal
 
 STARTUP :: 0
-UPDATE :: 1
-DRAW :: 2
+PRE_UPDATE :: 1
+UPDATE :: 2
+POST_UPDATE :: 3
+PRE_DRAW :: 4
+DRAW :: 5
+POST_DRAW :: 6
+DESTROY :: 7
 
 EASE_IN :: 0
 EASE_OUT :: 1
