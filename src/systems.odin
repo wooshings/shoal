@@ -5,53 +5,56 @@ import rl "vendor:raylib"
 
 // shoal's out-of-the-box behavior. registers, in frame order:
 //
-//	STARTUP     startup_window (InitWindow from the Window component, 60 fps cap)
+//	STARTUP     startup_window (InitWindow from the WindowComponent, 60 fps cap)
 //	UPDATE      run_timers, update_cursor_position
 //	POST_UPDATE signal_system (clears every signal bus)
 //	PRE_DRAW    BeginDrawing + ClearBackground(window.background)
-//	DRAW        draw_sprite (each Sprite drawn at its Transform)
+//	DRAW        draw_sprite (each SpriteComponent drawn at its TransformComponent)
 //	POST_DRAW   EndDrawing
 //	DESTROY     CloseWindow
 //
 // and spawns two entities: a display holding the default WindowComponent
-// (800x600, "shoal window", black background) and a cursor holding a Cursor
-// component. add it before your own systems if you want theirs to run first —
-// order within a schedule is registration order
+// (800x600, "shoal window", black background) and a cursor holding a
+// CursorComponent. add it before your own systems if you want theirs to run
+// first; order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
 	add_system(app, STARTUP, startup_window)
 	add_system(app, DRAW, draw_sprite)
 	add_system(app, POST_UPDATE, signal_system)
 	add_system(app, UPDATE, run_timers)
 	add_system(app, UPDATE, update_cursor_position)
-	add_system(app, PRE_DRAW, proc() {rl.BeginDrawing()
-		window, _ := single(&Window)
+	add_system(app, PRE_DRAW, proc(world: ^World) {rl.BeginDrawing()
+		window, _ := single(world, WindowComponent)
 		rl.ClearBackground(window.background)})
 	add_system(app, POST_DRAW, proc() {rl.EndDrawing()})
 	add_system(app, DESTROY, proc() {rl.CloseWindow()})
 
-	display := spawn_entity(app)
+	// a plugin is one of the few callers that holds an ^App, so it can reach
+	// the world through it and set up entities before the frame loop starts
+	world := get_world(app)
+	display := spawn_entity(world)
 	add_component(
+		world,
 		display,
-		&Window,
 		WindowComponent{width = 800, height = 600, title = "shoal window", background = rl.BLACK},
 	)
 
-	cursor := spawn_entity(app)
-	add_component(cursor, &Cursor)
+	cursor := spawn_entity(world)
+	add_component(world, cursor, CursorComponent)
 }
 
 @(private)
-update_cursor_position :: proc() {
-	cursor, _ := single(&Cursor)
+update_cursor_position :: proc(world: ^World) {
+	cursor, _ := single(world, CursorComponent)
 	cursor.position = rl.GetMousePosition()
 }
 
 @(private)
-draw_sprite :: proc() {
-	components := slice(&Sprite)
-	entities := slice_entity(&Sprite)
+draw_sprite :: proc(world: ^World) {
+	components := slice(world, SpriteComponent)
+	entities := slice_entity(world, SpriteComponent)
 	for &v, i in components {
-		sprite_transform := get_component(entities[i], &Transform)
+		sprite_transform := get_component(world, entities[i], TransformComponent)
 		rl.DrawTexture(
 			v.texture,
 			i32(sprite_transform.translation.x),
@@ -62,8 +65,8 @@ draw_sprite :: proc() {
 }
 
 @(private)
-startup_window :: proc() {
-	window, _ := single(&Window)
+startup_window :: proc(world: ^World) {
+	window, _ := single(world, WindowComponent)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
 	rl.SetTargetFPS(60)
 }

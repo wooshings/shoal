@@ -3,7 +3,7 @@ package shoal
 // per-type signal bus, created on first use.
 // one system writes a signal with data, any number of other systems read it
 // after. same-frame reads only work until signal_system clears the buses at
-// POST_UPDATE — see read/signal_system below for the details.
+// POST_UPDATE, see read and signal_system below
 Bus :: struct($T: typeid) {
 	pending: [dynamic]T,
 }
@@ -40,7 +40,7 @@ clear_bus :: proc($T: typeid) -> proc(b: rawptr) {
 }
 
 // queue a signal, readable until signal_system clears it at POST_UPDATE.
-// note POST_UPDATE runs before PRE_DRAW/DRAW, so a reader sees exactly what's
+// POST_UPDATE runs before PRE_DRAW/DRAW, so a reader only sees what's
 // been written since the last POST_UPDATE: UPDATE systems see same-frame
 // writes, but a DRAW system only sees writes made after this frame's
 // POST_UPDATE (by PRE_DRAW or earlier DRAW systems)
@@ -63,8 +63,8 @@ write_with_data :: proc(data: $T) {
 // every signal of type T written since the last POST_UPDATE, non-consuming,
 // empty if none. iterate it: for s in read(MySignal)
 // copied into context.temp_allocator so write() during iteration can't
-// reallocate the pending buffer out from under you — but that means the result
-// dies with the frame's temp arena, don't hold onto it past that
+// reallocate the pending buffer out from under you. that also means the
+// result dies with the frame's temp arena, don't hold onto it past that
 read :: proc($T: typeid) -> []T {
 	bus := get_bus(T)
 	if len(bus.pending) == 0 {return nil}
@@ -76,8 +76,8 @@ read :: proc($T: typeid) -> []T {
 // runs at POST_UPDATE, clears every bus so the next frame starts fresh.
 // writes made after it (e.g. in DRAW) survive until the *next* frame's
 // POST_UPDATE, so the rest of this frame and the next frame's
-// PRE_UPDATE/UPDATE systems still read them — but the next frame's DRAW
-// never does, POST_UPDATE gets there first
+// PRE_UPDATE/UPDATE systems still read them. the next frame's DRAW
+// never does though, POST_UPDATE gets there first
 signal_system :: proc() {
 	for _, e in buses {
 		e.clear(e.bus)

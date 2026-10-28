@@ -3,7 +3,7 @@ package main
 import "core:math/rand"
 import "core:strconv"
 import "core:strings"
-import ecs "shoal/src"
+import ecs "../src"
 import rl "vendor:raylib"
 
 app: ecs.App
@@ -13,7 +13,6 @@ BallComponent :: struct {
 	radius: f32,
 	speed:  f32,
 }
-Ball: ecs.Storage(BallComponent)
 
 main :: proc() {
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
@@ -25,18 +24,22 @@ main :: proc() {
 	ecs.run(&app)
 }
 
-setup_window :: proc() {
-	window, _ := ecs.single(&ecs.Window)
+// STARTUP system taking the world: the window lives in it, so adjusting the
+// default WindowComponent is a world lookup now
+setup_window :: proc(world: ^ecs.World) {
+	window, _ := ecs.single(world, ecs.WindowComponent)
 	window.background = rl.BLACK
 }
 
-spawn_balls :: proc() {
+// STARTUP system taking the world: spawn_entity wants it, and the balls'
+// components live inside it, no global storage to declare
+spawn_balls :: proc(world: ^ecs.World) {
 	for i in 0 ..< ball_count {
-		ball := ecs.spawn_entity(&app)
-		ecs.add_component(ball, &Ball, BallComponent{radius = 5, speed = rand.float32_range(4, 6)})
+		ball := ecs.spawn_entity(world)
+		ecs.add_component(world, ball, BallComponent{radius = 5, speed = rand.float32_range(4, 6)})
 		ecs.add_component(
+			world,
 			ball,
-			&ecs.Transform,
 			ecs.TransformComponent {
 				translation = {400, 300},
 				rotation = rand.float32_range(0, 360),
@@ -45,13 +48,13 @@ spawn_balls :: proc() {
 	}
 }
 
-update_balls :: proc() {
-	window, _ := ecs.single(&ecs.Window)
+update_balls :: proc(world: ^ecs.World) {
+	window, _ := ecs.single(world, ecs.WindowComponent)
 
-	balls := ecs.slice(&Ball)
-	entities := ecs.slice_entity(&Ball)
+	balls := ecs.slice(world, BallComponent)
+	entities := ecs.slice_entity(world, BallComponent)
 	for ball, i in balls {
-		transform := ecs.get_component(entities[i], &ecs.Transform)
+		transform := ecs.get_component(world, entities[i], ecs.TransformComponent)
 		pos := transform.translation
 
 		if pos.x <= 0 || pos.x >= f32(window.width) || pos.y <= 0 || pos.y >= f32(window.height) {
@@ -63,11 +66,11 @@ update_balls :: proc() {
 	}
 }
 
-draw_balls :: proc() {
-	balls := ecs.slice(&Ball)
-	entities := ecs.slice_entity(&Ball)
+draw_balls :: proc(world: ^ecs.World) {
+	balls := ecs.slice(world, BallComponent)
+	entities := ecs.slice_entity(world, BallComponent)
 	for ball, i in balls {
-		transform := ecs.get_component(entities[i], &ecs.Transform)
+		transform := ecs.get_component(world, entities[i], ecs.TransformComponent)
 		rl.DrawCircle(
 			i32(transform.translation.x),
 			i32(transform.translation.y),
@@ -81,6 +84,6 @@ show_framerate :: proc() {
 	fps_buf: [19]byte
 	framerate := strconv.write_int(fps_buf[:], i64(1 / rl.GetFrameTime()), 10)
 	rl.DrawText(strings.clone_to_cstring(framerate), 0, 0, 24, rl.WHITE)
-	rl.DrawText("   fps", 0, 0, 24, rl.WHITE)
+	rl.DrawText("   fps", 0, 24, 24, rl.WHITE)
 	rl.DrawText("10000 balls", 0, 24, 24, rl.WHITE)
 }

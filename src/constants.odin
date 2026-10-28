@@ -1,6 +1,6 @@
 package shoal
 
-// schedule ids for add_system — run() walks them in this order:
+// schedule ids for add_system. run() walks them in this order:
 //
 //	STARTUP      once, before the first frame (plugins run before this)
 //	PRE_UPDATE   \
@@ -22,7 +22,7 @@ DRAW :: 5
 POST_DRAW :: 6
 DESTROY :: 7
 
-// easing ids for the (wip) Tween.ease field — see tween.odin, nothing reads
+// easing ids for the (wip) Tween.ease field. see tween.odin, nothing reads
 // them yet
 EASE_IN :: 0
 EASE_OUT :: 1
