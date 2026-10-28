@@ -24,7 +24,7 @@ DefaultPlugin :: proc(app: ^App) {
 	add_system(app, UPDATE, run_timers)
 	add_system(app, UPDATE, update_cursor_position)
 	add_system(app, PRE_DRAW, proc(world: ^World) {rl.BeginDrawing()
-		window, _ := single(world, WindowComponent)
+		window, _ := single(world, Window)
 		rl.ClearBackground(window.background)})
 	add_system(app, POST_DRAW, proc() {rl.EndDrawing()})
 	add_system(app, DESTROY, proc() {rl.CloseWindow()})
@@ -36,25 +36,25 @@ DefaultPlugin :: proc(app: ^App) {
 	add_component(
 		world,
 		display,
-		WindowComponent{width = 800, height = 600, title = "shoal window", background = rl.BLACK},
+		Window{width = 800, height = 600, title = "shoal window", background = rl.BLACK},
 	)
 
 	cursor := spawn_entity(world)
-	add_component(world, cursor, CursorComponent)
+	add_component(world, cursor, Cursor)
 }
 
 @(private)
 update_cursor_position :: proc(world: ^World) {
-	cursor, _ := single(world, CursorComponent)
+	cursor, _ := single(world, Cursor)
 	cursor.position = rl.GetMousePosition()
 }
 
 @(private)
 draw_sprite :: proc(world: ^World) {
-	components := slice(world, SpriteComponent)
-	entities := slice_entity(world, SpriteComponent)
+	components := slice(world, Sprite)
+	entities := slice_entity(world, Sprite)
 	for &v, i in components {
-		sprite_transform := get_component(world, entities[i], TransformComponent)
+		sprite_transform := get_component(world, entities[i], Transform)
 		rl.DrawTexture(
 			v.texture,
 			i32(sprite_transform.translation.x),
@@ -66,7 +66,7 @@ draw_sprite :: proc(world: ^World) {
 
 @(private)
 startup_window :: proc(world: ^World) {
-	window, _ := single(world, WindowComponent)
+	window, _ := single(world, Window)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
 	rl.SetTargetFPS(60)
 }

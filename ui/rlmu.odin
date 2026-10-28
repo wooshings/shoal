@@ -22,6 +22,8 @@ rlmu_init :: proc "contextless" () {
 	global_state = new(RLMU_State)
 }
 
+// bake the default microui atlas into a raylib texture and set up the mui
+// context (text metrics + clipboard callbacks). UIPlugin runs it at STARTUP
 init :: proc(state := global_state) {
 	// Allocate an array of 32 bit pixel colors for the atlas used by mui
 	// An atlas is a big image packed with multiple smaller images. Like a sprite sheet!
@@ -62,11 +64,15 @@ init :: proc(state := global_state) {
 	state.ctx.textbox_state.get_clipboard = get_clipboard
 }
 
+// unload the atlas texture. UIPlugin runs it at DESTROY
 destroy :: proc(state := global_state) {
 	// Free atlas texture
 	rl.UnloadTexture(state.atlas)
 }
 
+// forward this frame's raylib input (text, mouse, keys) to microui and start
+// the frame. returns the context to build ui against. UIPlugin runs it at
+// PRE_DRAW and hands the result to get_ctx()
 begin :: proc(state: ^RLMU_State = global_state) -> ^mu.Context {
 	// Forward all input from raylib to mui
 	// We need to tell mui what keys are pressed, where the mouse is etc so the ui can react accordingly
@@ -80,6 +86,8 @@ begin :: proc(state: ^RLMU_State = global_state) -> ^mu.Context {
 	return &state.ctx
 }
 
+// tell microui the frame is finished, then replay its command list as raylib
+// draw calls (and close any lingering scissor). UIPlugin runs it at POST_DRAW
 end :: proc(state := global_state) {
 	// Tell mui that we're done drawing ui
 	mu.end(&state.ctx)
@@ -140,8 +148,11 @@ end :: proc(state := global_state) {
 	rl.EndScissorMode()
 }
 
+// init() with destroy() deferred to scope exit: set the ui up and tear it
+// down around a block
 @(deferred_in = destroy)
 init_scope :: proc(state := global_state) -> ^mu.Context {init(state); return &state.ctx}
+// begin() with end() deferred to scope exit: a whole frame of ui in one block
 @(deferred_in = end)
 begin_scope :: proc(state := global_state) -> ^mu.Context {begin(state); return &state.ctx}
 

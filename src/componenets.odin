@@ -5,7 +5,7 @@ import rl "vendor:raylib"
 // what the app's window opens with: size, title, and the clear color.
 // DefaultPlugin opens the window from it at STARTUP and paints the clear
 // color at PRE_DRAW
-WindowComponent :: struct {
+Window :: struct {
 	width:      i32,
 	height:     i32,
 	title:      string,
@@ -13,20 +13,20 @@ WindowComponent :: struct {
 }
 
 // the mouse position, refreshed every UPDATE by DefaultPlugin
-CursorComponent :: struct {
+Cursor :: struct {
 	position: rl.Vector2,
 }
 
 // a texture DefaultPlugin draws at DRAW, placed by the same entity's
 // TransformComponent (so every sprite entity needs a Transform component
 // too)
-SpriteComponent :: struct {
+Sprite :: struct {
 	texture: rl.Texture2D,
 }
 
 // 2D translation + rotation, read back by draw_sprite when it places the
 // entity's SpriteComponent
-TransformComponent :: struct {
+Transform :: struct {
 	translation: rl.Vector2,
 	rotation:    f32,
 }
