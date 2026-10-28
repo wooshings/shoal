@@ -2,13 +2,18 @@ package shoal
 
 import rl "vendor:raylib"
 
+// the app itself: systems grouped by schedule id (see the STARTUP..DESTROY
+// constants), the plugins that run before everything else, and the list of
+// every entity id handed out by spawn_entity
 App :: struct {
 	systems:  map[int][dynamic]proc(),
 	plugins:  [dynamic]proc(app: ^App),
 	entities: [dynamic]Entity,
 }
 
-// add a new system to the app that will run based on the provided schedule
+// register a system on a schedule (one of the STARTUP..DESTROY constants).
+// systems on the same schedule run in registration order, every time that
+// schedule comes around
 add_system :: proc(app: ^App, schedule: int, system: proc()) {
 	if _, ok := app.systems[schedule]; !ok {
 		app.systems[schedule] = [dynamic]proc(){}
@@ -16,11 +21,15 @@ add_system :: proc(app: ^App, schedule: int, system: proc()) {
 	append(&app.systems[schedule], system)
 }
 
-// add a new plugin to the app. a modular way to add new functionality from beyond the main procedure
+// register a plugin: a proc that gets ^App and can add_system/add_plugin just
+// like main() would. run() executes them in registration order, once, before
+// the STARTUP systems
 add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 	append(&app.plugins, plugin)
 }
 
+// everything registered on a schedule, in registration order — or an empty
+// list if nothing was added. this is what run() iterates each frame
 get_system :: proc(app: ^App, schedule: int) -> [dynamic]proc() {
 	if systems, ok := app.systems[schedule]; ok && len(systems) > 0 {
 		return systems
@@ -28,7 +37,10 @@ get_system :: proc(app: ^App, schedule: int) -> [dynamic]proc() {
 	return [dynamic]proc(){}
 }
 
-// run the app
+// run every plugin (in registration order), then the STARTUP systems once,
+// then the frame loop: PRE_UPDATE -> UPDATE -> POST_UPDATE -> PRE_DRAW ->
+// DRAW -> POST_DRAW, over and over until rl.WindowShouldClose() says stop,
+// and finally the DESTROY systems
 run :: proc(app: ^App) {
 	for p in app.plugins {
 		p(app)

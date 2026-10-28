@@ -3,6 +3,20 @@ package shoal
 import "core:strings"
 import rl "vendor:raylib"
 
+// shoal's out-of-the-box behavior. registers, in frame order:
+//
+//	STARTUP     startup_window (InitWindow from the Window component, 60 fps cap)
+//	UPDATE      run_timers, update_cursor_position
+//	POST_UPDATE signal_system (clears every signal bus)
+//	PRE_DRAW    BeginDrawing + ClearBackground(window.background)
+//	DRAW        draw_sprite (each Sprite drawn at its Transform)
+//	POST_DRAW   EndDrawing
+//	DESTROY     CloseWindow
+//
+// and spawns two entities: a display holding the default WindowComponent
+// (800x600, "shoal window", black background) and a cursor holding a Cursor
+// component. add it before your own systems if you want theirs to run first —
+// order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
 	add_system(app, STARTUP, startup_window)
 	add_system(app, DRAW, draw_sprite)

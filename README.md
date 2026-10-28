@@ -11,7 +11,7 @@ my silly little ecs engine for odin and raylib :3
 ## install
 clone this repo in your project directory
 
-`git clone https://git.egfk.net/harper/shoal`
+```git clone https://git.egfk.net/harper/shoal```
 
 and import the package
 
@@ -135,3 +135,33 @@ main :: proc() {
 ```
 
 plugins make your scripts very reuseable. in fact, much of shoal's default behaviors come from plugins via `DefaultPlugin()`
+
+### signals
+signals are structs your systems can talk to each other with. one system writes a signal with data, another system reads it later in the same frame — as long as the reader runs before `signal_system` clears the buses at POST_UPDATE (see the caveat at the end of this section)
+
+```odin
+DamageEvent :: struct { amount: int }
+```
+
+`write()` queues a signal on a per-type bus. `read()` gives you back every signal of that type written since the last POST_UPDATE (an empty slice if there were none), so you can iterate it. reads don't consume, so any number of systems can read the same signal and its data
+
+```odin
+attack :: proc() {
+  ecs.write(DamageEvent{amount = 5})
+}
+
+// registered after attack in UPDATE, so it sees the event the same frame
+check_damage :: proc() {
+  for e in ecs.read(DamageEvent) {
+    fmt.println("took damage!", e.amount)
+  }
+}
+```
+
+you can also write an empty payload with the bare type: `ecs.write(DamageEvent)`
+
+scheduling caveat: every system sees exactly the signals written since the last `signal_system()` run, and that runs at POST_UPDATE — *before* PRE_DRAW/DRAW. so:
+
+- systems running before POST_UPDATE (STARTUP/PRE_UPDATE/UPDATE/early POST_UPDATE) see same-frame writes
+- a DRAW system sees none of them — POST_UPDATE already cleared the bus. it only sees signals written after POST_UPDATE by an earlier system in the same frame (say, one DRAW system reacting to another's write)
+- writes made after POST_UPDATE survive the rest of the frame and are picked up by the next frame's PRE_UPDATE/UPDATE systems, then cleared at the next POST_UPDATE — so the next frame's DRAW never sees them either
