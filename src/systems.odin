@@ -6,7 +6,7 @@ import rl "vendor:raylib"
 DefaultPlugin :: proc(app: ^App) {
 	add_system(app, STARTUP, startup_window)
 	add_system(app, DRAW, draw_sprite)
-	add_system(app, UPDATE, signal_system)
+	add_system(app, POST_UPDATE, signal_system)
 	add_system(app, UPDATE, run_timers)
 	add_system(app, UPDATE, update_cursor_position)
 	add_system(app, PRE_DRAW, proc() {rl.BeginDrawing()

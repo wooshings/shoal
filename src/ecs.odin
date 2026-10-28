@@ -1,18 +1,6 @@
 package shoal
 
-import "core:strings"
-import "core:thread"
-import ml "vendor:microui"
 import rl "vendor:raylib"
-
-update_pool: thread.Pool
-
-@(private)
-sparse_entity_limit: int
-
-get_entity_limit :: proc() -> int {
-	return sparse_entity_limit
-}
 
 App :: struct {
 	systems:  map[int][dynamic]proc(),
