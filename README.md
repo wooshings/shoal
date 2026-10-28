@@ -29,7 +29,9 @@ import ecs "shoal/src"
 ```
 
 ## usage
-first create a new app struct. this is where your systems and plugins live.
+first create a new app struct. it holds your systems and plugins, and tucked
+inside it a `World` holding every entity and component (your game data).
+systems never see the app itself, only the world
 
 ```odin
 import ecs "shoal/src"
@@ -37,7 +39,7 @@ import ecs "shoal/src"
 app: ecs.App
 ```
 
-you can run your app with `run()`. run takes a reference to your app to run it's systems.
+you can run your app with `run()`. run takes a pointer to your app and drives its systems.
 
 ```odin
 main :: proc() {
@@ -48,21 +50,21 @@ main :: proc() {
 ### systems
 systems are procedures that run on set schedules
 
-a schedule just determines when a procedure runs\
+a schedule determines when a procedure runs\
 there are 8 of them, and `run()` walks them in this order:
 
-- `STARTUP` — once, before the first frame
-- `PRE_UPDATE` — every frame, first thing
-- `UPDATE` — every frame, your main logic
-- `POST_UPDATE` — every frame, last stop before drawing (`signal_system` clears the signal buses here)
-- `PRE_DRAW` — every frame, opens the raylib frame (`DefaultPlugin` calls `BeginDrawing` + clears the background here)
-- `DRAW` — every frame, inside the frame — this is where your raylib draw calls go
-- `POST_DRAW` — every frame, closes the raylib frame (`DefaultPlugin` calls `EndDrawing` here)
-- `DESTROY` — once, after the loop exits (`DefaultPlugin` calls `CloseWindow` here)
+- `STARTUP`: once, before the first frame
+- `PRE_UPDATE`: every frame, first thing
+- `UPDATE`: every frame, your main logic
+- `POST_UPDATE`: every frame, last stop before drawing (`signal_system` clears the signal buses here)
+- `PRE_DRAW`: every frame, opens the raylib frame (`DefaultPlugin` calls `BeginDrawing` + clears the background here)
+- `DRAW`: every frame, inside the frame. this is where your raylib draw calls go
+- `POST_DRAW`: every frame, closes the raylib frame (`DefaultPlugin` calls `EndDrawing` here)
+- `DESTROY`: once, after the loop exits (`DefaultPlugin` calls `CloseWindow` here)
 
 so: `STARTUP` runs once up front, the six update/draw ones run every frame in that order, `DESTROY` runs once when the window closes.
 
-systems registered on the same schedule run in registration order — whoever was `add_system()`ed first runs first (that includes the systems your plugins add, so `add_plugin(&app, ecs.DefaultPlugin)` before your own systems means shoal's defaults run first).
+systems registered on the same schedule run in registration order: whoever was `add_system()`ed first runs first, including the systems your plugins add. plugins themselves always run once before *all* the `STARTUP` systems, no matter when you `add_plugin()` them, so adding `add_plugin(&app, ecs.DefaultPlugin)` first doesn't change *when* DefaultPlugin runs. it just puts shoal's defaults at the front of each schedule, which is still a good habit.
 
 ```odin
 main :: proc() {
@@ -81,28 +83,38 @@ example_update :: proc() {
 }
 ```
 
+a system can also take the world. declare it as `proc(world: ^ecs.World)` and `run()` hands it the app's world, the same one holding every entity and component. that's all a system ever gets: systems structurally can't reach the app itself (add_system, plugins, run); only plugins and `main()` ever hold an `^App`
+
+```odin
+main :: proc() {
+  ecs.add_system(&app, ecs.STARTUP, example_spawn)
+}
+
+example_spawn :: proc(world: ^ecs.World) {
+  entity := ecs.spawn_entity(world) // the world, no global needed
+  ecs.add_component(world, entity, ExampleComponent{...})
+}
+```
+
+plain `proc()` systems work exactly as before. only ask for the world parameter when you actually need it
+
 ### components
-components are just structs with data, and kept with other components of that type in `Storage`.\
-create a new component
+components are plain structs. declare one and you're done. the data lives in the world: every component type gets a storage inside it, created automatically the first time you add that component to an entity. there's no global to declare and no registration step
 
 ```odin
 ExampleComponent :: struct {}
 ```
 
-and create it's storage
+shoal ships a few built-ins already declared: `WindowComponent`, `CursorComponent`, `SpriteComponent` and `TransformComponent`. `DefaultPlugin` reads and writes them through the world: it opens the window from `WindowComponent`, keeps the `CursorComponent` entity on the mouse, and draws every `SpriteComponent` at its `TransformComponent`.
 
-```odin
-Example: ecs.Storage(ExampleComponent)
-```
-
-shoal ships a few built-ins already declared as globals, so there's nothing to create — just pass `&ecs.Window`, `&ecs.Cursor`, `&ecs.Sprite` or `&ecs.Transform`. `DefaultPlugin` reads and writes them: it opens the window from `Window`, keeps `Cursor` on the mouse, and draws every `Sprite` at its `Transform`.
+each world owns its own storages, keyed by the component's type: two worlds never share data, and a zero `ecs.World{}` is ready to use.
 
 ### spawn entities
-create a new entity with `spawn_entity()`
+create a new entity with `spawn_entity()`, which hands out the next id from the world's entity list. ids are never reused. systems get the world as a parameter; in `main()` or a plugin it's `&app.world` (or `ecs.get_world(app)`)
 
 ```odin
-main :: proc() {
-  entity := ecs.spawn_entity(&app)
+example_spawn :: proc(world: ^ecs.World) {
+  entity := ecs.spawn_entity(world)
 }
 
 ```
@@ -110,58 +122,66 @@ main :: proc() {
 and give it new components with `add_component()`
 
 ```odin
-main :: proc() {
-  ecs.add_component(entity, &Example) // make sure to pass a reference to the storage, not the component type
+example_spawn :: proc(world: ^ecs.World) {
+  entity := ecs.spawn_entity(world)
+  ecs.add_component(world, entity, ExampleComponent) // just the type: a zero-initialized component
 }
 ```
 
-or fill it in on the spot with the data overload
+or fill it in on the spot by passing data instead
 
 ```odin
-main :: proc() {
-  ecs.add_component(entity, &Example, ExampleComponent{...})
+example_spawn :: proc(world: ^ecs.World) {
+  entity := ecs.spawn_entity(world)
+  ecs.add_component(world, entity, ExampleComponent{...})
 }
 ```
+
+either way the world's storage for that component type is created on the spot if this is the first one
 
 ### query
-since components are saved in storage next to their entity, you can loop through a Storage and pick out what you like. `slice()` and `slice_entity()` pair up by index: `entities[i]` owns `components[i]`
+since a world keeps components of one type together, you can loop through them and pick out what you like. `slice()` and `slice_entity()` pair up by index: `entities[i]` owns `components[i]`
 
 ```odin
-main :: proc() {
-  components := ecs.slice(&Example)
-  entities := ecs.slice_entity(&Example)
+example_system :: proc(world: ^ecs.World) {
+  components := ecs.slice(world, ExampleComponent)
+  entities := ecs.slice_entity(world, ExampleComponent)
   for v, i in components {
     e := entities[i]    // get entity that owns the component
   }
 }
 ```
 
-one caveat: `slice()` hands back the storage's live array, not a copy, so adding components afterwards can reallocate it out from under you — don't hold one across `add_component()` calls.
+one caveat: `slice()` hands back the live array inside the world, not a copy, so adding components afterwards can reallocate it out from under you. don't hold one across `add_component()` calls.
 
-or if you know your storage only has one entry use `single()`
+or if you know only one entity has the component use `single()`
 
 ```odin
-main :: proc() {
-  component, entity_id := ecs.single(&Example)
+example_system :: proc(world: ^ecs.World) {
+  component, entity_id := ecs.single(world, ExampleComponent)
 }
 ```
 
-and once you have an entity id, `get_component()` reaches into any storage to get that entity's copy of the component — handy for components that live alongside another one (a sprite's `Transform`, say)
+and once you have an entity id, `get_component()` reaches into any component type to get that entity's copy, handy for components that live alongside another one (a sprite's `TransformComponent`, say)
 
 ```odin
-main :: proc() {
-  component, entity_id := ecs.single(&Example)
-  other := ecs.get_component(entity_id, &OtherExample)
+example_system :: proc(world: ^ecs.World) {
+  component, entity_id := ecs.single(world, ExampleComponent)
+  other := ecs.get_component(world, entity_id, OtherExampleComponent)
 }
 ```
 
-no existence check though: only ask for entities you know are in that storage.
- ### plugins
-plugins are just a procedure that takes `App` as a parameter, meaning it can make changes to `app`, just like main()
+no existence check though: only ask for entities you know have that component.
+
+### plugins
+plugins are a procedure that takes `^App` as a parameter, the one bit of privilege over regular systems, which only ever see `^World`. a plugin can register systems and plugins on the app the same way main() does, and reach the game data through `get_world(app)`
 
 ```odin
 ExamplePlugin :: proc(app: ^App) {
   ecs.add_system(app, ecs.STARTUP, some_plugin_system)
+
+  entity := ecs.spawn_entity(ecs.get_world(app)) // same world the systems will get
+  ecs.add_component(ecs.get_world(app), entity, ExampleComponent{...})
 }
 ```
 
@@ -172,12 +192,12 @@ main :: proc() {
 }
 ```
 
-plugins make your scripts very reuseable. in fact, much of shoal's default behaviors come from plugins via `DefaultPlugin()`
+plugins make your scripts reusable. much of shoal's default behavior comes from plugins via `DefaultPlugin()`
 
-run() fires every plugin in the order you added them, once, before the STARTUP systems — so everything they register is in place before anything executes
+run() fires every plugin in the order you added them, once, before the STARTUP systems, so everything they register is in place before anything executes
 
 ### signals
-signals are structs your systems can talk to each other with. one system writes a signal with data, another system reads it later in the same frame — as long as the reader runs before `signal_system` clears the buses at POST_UPDATE (see the caveat at the end of this section)
+signals are structs your systems can talk to each other with. one system writes a signal with data, another system reads it later in the same frame, as long as the reader runs before `signal_system` clears the buses at POST_UPDATE (see the caveat at the end of this section)
 
 ```odin
 DamageEvent :: struct { amount: int }
@@ -200,14 +220,14 @@ check_damage :: proc() {
 
 you can also write an empty payload with the bare type: `ecs.write(DamageEvent)`
 
-scheduling caveat: every system sees exactly the signals written since the last `signal_system()` run, and that runs at POST_UPDATE — *before* PRE_DRAW/DRAW. so:
+scheduling caveat: every system sees exactly the signals written since the last `signal_system()` run, and that runs at POST_UPDATE, *before* PRE_DRAW/DRAW. so:
 
 - systems running before POST_UPDATE (STARTUP/PRE_UPDATE/UPDATE/early POST_UPDATE) see same-frame writes
-- a DRAW system sees none of them — POST_UPDATE already cleared the bus. it only sees signals written after POST_UPDATE by an earlier system in the same frame (say, one DRAW system reacting to another's write)
-- writes made after POST_UPDATE survive the rest of the frame and are picked up by the next frame's PRE_UPDATE/UPDATE systems, then cleared at the next POST_UPDATE — so the next frame's DRAW never sees them either
+- a DRAW system sees none of them, POST_UPDATE already cleared the bus. it only sees signals written after POST_UPDATE by an earlier system in the same frame (say, one DRAW system reacting to another's write)
+- writes made after POST_UPDATE survive the rest of the frame and are picked up by the next frame's PRE_UPDATE/UPDATE systems, then cleared at the next POST_UPDATE. the next frame's DRAW never sees them either
 
 ### timers
-timers are named countdowns. `start_timer()` starts one (or restarts one already stored under that name), and `get_timer()` reads it back — anything that never started or already finished reads back zeroed, so a nonzero `lifetime` means "still ticking"
+timers are named countdowns. they live in a package global for now, deliberately outside the world, since they're keyed by name rather than owned by an entity. `start_timer()` starts one (or restarts one already stored under that name) and `get_timer()` reads it back. anything that never started or already finished reads back zeroed, so a nonzero `lifetime` means "still ticking"
 
 ```odin
 example_system :: proc() {
@@ -216,9 +236,9 @@ example_system :: proc() {
 }
 ```
 
-timers tick down every frame in `run_timers`, which `DefaultPlugin` registers at UPDATE. when one runs out its entry is reset to `Timer{}` — that's the auto-clear, and why `get_timer()` goes back to zero when you've waited it out.
+timers tick down every frame in `run_timers`, which `DefaultPlugin` registers at UPDATE. the reset fires when the remaining lifetime drops to roughly one frame's delta (it compares against a fresh `GetFrameTime()` call, so it can reset a frame or two early) and resets the entry to `Timer{}`. that's the auto-clear, and why `get_timer()` goes back to zero when you've waited it out.
 
-on expiry a `TimerFired{name = ...}` signal is *meant* to be queued for `read(TimerFired)` — wip: as written the reset zeroes the entry before the name is read, so `TimerFired` currently never fires (reading the timers themselves works fine). once that's fixed the usual signal caveat applies: a reader has to run before `signal_system` clears the buses at POST_UPDATE, see the end of the [signals](#signals) section
+on expiry a `TimerFired{name = ...}` signal is *meant* to be queued for `read(TimerFired)`. wip: as written the reset zeroes the entry before the name is read, so `TimerFired` currently never fires (reading the timers themselves works fine). once that's fixed the usual signal caveat applies: a reader has to run before `signal_system` clears the buses at POST_UPDATE, see the end of the [signals](#signals) section
 
 ### ui
 `shoal/ui` wraps microui with its own plugin. add it before any system that wants to draw ui
@@ -247,4 +267,4 @@ my_ui :: proc() {
 ```
 
 ### tween
-wip: tweens don't do anything yet. `tween.odin` ships `Tween`, `start_tween()`, `create_tween()` (a stub that returns an empty `Tween` and ignores its arguments), `update_tween_system()` (empty, and no schedule registers it) and a few sine easing helpers nothing calls — don't build on it. the `EASE_IN`/`EASE_OUT`/`EASE_IN_OUT` constants are ids for the unused `Tween.ease` field.
+wip: tweens don't do anything yet. `tween.odin` ships `Tween`, `start_tween()`, `create_tween()` (a stub that returns an empty `Tween` and ignores its arguments), `update_tween_system()` (empty, and no schedule registers it) and a few sine easing helpers nothing calls. don't build on it. the `EASE_IN`/`EASE_OUT`/`EASE_IN_OUT` constants are ids for the unused `Tween.ease` field.
