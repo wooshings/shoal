@@ -36,7 +36,9 @@ systems never see the app itself, only the world
 ```odin
 import ecs "shoal/src"
 
-app: ecs.App
+main :: proc() {
+  app: ecs.App
+}
 ```
 
 you can run your app with `run()`. run takes a pointer to your app and drives its systems.
@@ -96,6 +98,7 @@ components are plain structs. declare one and you're done. the data lives in the
 
 ```odin
 ExampleComponent :: struct {}
+```
 
 each world owns its own storages, keyed by the component's type: two worlds never share data, and a zero `ecs.World{}` is ready to use.
 
