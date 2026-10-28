@@ -103,9 +103,6 @@ components are plain structs. declare one and you're done. the data lives in the
 
 ```odin
 ExampleComponent :: struct {}
-```
-
-shoal ships a few built-ins already declared: `WindowComponent`, `CursorComponent`, `SpriteComponent` and `TransformComponent`. `DefaultPlugin` reads and writes them through the world: it opens the window from `WindowComponent`, keeps the `CursorComponent` entity on the mouse, and draws every `SpriteComponent` at its `TransformComponent`.
 
 each world owns its own storages, keyed by the component's type: two worlds never share data, and a zero `ecs.World{}` is ready to use.
 
