@@ -54,15 +54,8 @@ a schedule determines when a procedure runs\
 there are 8 of them, and `run()` walks them in this order:
 
 - `STARTUP`: once, before the first frame
-- `PRE_UPDATE`: every frame, first thing
 - `UPDATE`: every frame, your main logic
-- `POST_UPDATE`: every frame, last stop before drawing (`signal_system` clears the signal buses here)
-- `PRE_DRAW`: every frame, opens the raylib frame (`DefaultPlugin` calls `BeginDrawing` + clears the background here)
 - `DRAW`: every frame, inside the frame. this is where your raylib draw calls go
-- `POST_DRAW`: every frame, closes the raylib frame (`DefaultPlugin` calls `EndDrawing` here)
-- `DESTROY`: once, after the loop exits (`DefaultPlugin` calls `CloseWindow` here)
-
-so: `STARTUP` runs once up front, the six update/draw ones run every frame in that order, `DESTROY` runs once when the window closes.
 
 systems registered on the same schedule run in registration order: whoever was `add_system()`ed first runs first, including the systems your plugins add. plugins themselves always run once before *all* the `STARTUP` systems, no matter when you `add_plugin()` them, so adding `add_plugin(&app, ecs.DefaultPlugin)` first doesn't change *when* DefaultPlugin runs. it just puts shoal's defaults at the front of each schedule, which is still a good habit.
 
