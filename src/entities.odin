@@ -1,5 +1,6 @@
 package shoal
 
+import "core:fmt"
 import "core:mem"
 
 // an entity is an id, a u32 handed out by spawn_entity and recorded in
@@ -139,17 +140,45 @@ slice_entity :: proc(world: ^World, $T: typeid) -> [dynamic]Entity {
 }
 
 // ^T of the world's first entry of that component plus the entity that owns
-// it, handy for singletons like WindowComponent. panics if no entity has
-// the component yet
+// it, handy for singletons like WindowComponent. panics with a readable
+// message if no entity has the component yet
 single :: proc(world: ^World, $T: typeid) -> (^T, Entity) {
 	storage := get_storage(world, T)
+	if len(storage.dense) == 0 {
+		panic(fmt.tprintf("single: no entity has component {}", typeid_of(T)))
+	}
 	return &storage.dense[0], storage.entities[0]
 }
 
 // a pointer to that entity's component, looked up through the sparse map.
-// no existence check: an entity that was never added to this storage reads
-// back as dense[0], and a world where nobody has the component panics
+// panics with a readable message if this specific entity was never added to
+// the storage. use has_component or try_get_component when you aren't sure
 get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 	storage := get_storage(world, T)
-	return &storage.dense[storage.sparse[entity]]
+	if i, ok := storage.sparse[entity]; ok {
+		return &storage.dense[i]
+	}
+	panic(fmt.tprintf("get_component: entity {} has no component {}", entity, typeid_of(T)))
+}
+
+// true iff this specific entity has the component. probing a component the
+// entity lacks (or a type nothing has added yet) is safe: it never panics
+// and never reports a different entity's entry. fine to call every frame,
+// though the first probe of a never-seen type lazily creates its storage
+has_component :: proc(world: ^World, entity: Entity, $T: typeid) -> bool {
+	storage := get_storage(world, T)
+	_, ok := storage.sparse[entity]
+	return ok
+}
+
+// the entity's component and a flag saying whether it's there: (nil, false)
+// when this entity never got the component, no panic. the pointer-flavored
+// alternative to has_component + get_component for plugins and systems that
+// probe components they don't own
+try_get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> (component: ^T, ok: bool) {
+	storage := get_storage(world, T)
+	if i, exists := storage.sparse[entity]; exists {
+		return &storage.dense[i], true
+	}
+	return nil, false
 }
