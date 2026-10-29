@@ -79,7 +79,8 @@ get_world :: proc(app: ^App) -> ^World {
 
 // run every plugin (in registration order), then the STARTUP systems once,
 // then the frame loop: PRE_UPDATE -> UPDATE -> POST_UPDATE -> PRE_DRAW ->
-// DRAW -> POST_DRAW, over and over until rl.WindowShouldClose() says stop,
+// DRAW -> LATE_DRAW -> POST_DRAW, over and over until rl.WindowShouldClose()
+// says stop,
 // and finally the DESTROY systems. world systems get handed the app's own
 // world, the same one run() is holding. there's no second copy
 run :: proc(app: ^App) {
@@ -94,6 +95,7 @@ run :: proc(app: ^App) {
 		for s in get_system(app, POST_UPDATE) {run_system(app, s)}
 		for s in get_system(app, PRE_DRAW) {run_system(app, s)}
 		for s in get_system(app, DRAW) {run_system(app, s)}
+		for s in get_system(app, LATE_DRAW) {run_system(app, s)}
 		for s in get_system(app, POST_DRAW) {run_system(app, s)}
 	}
 

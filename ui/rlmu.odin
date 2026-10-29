@@ -87,7 +87,7 @@ begin :: proc(state: ^RLMU_State = global_state) -> ^mu.Context {
 }
 
 // tell microui the frame is finished, then replay its command list as raylib
-// draw calls (and close any lingering scissor). UIPlugin runs it at POST_DRAW
+// draw calls (and close any lingering scissor). UIPlugin runs it at LATE_DRAW
 end :: proc(state := global_state) {
 	// Tell mui that we're done drawing ui
 	mu.end(&state.ctx)
