@@ -26,9 +26,3 @@ DRAW :: 5
 LATE_DRAW :: 6
 POST_DRAW :: 7
 DESTROY :: 8
-
-// easing ids for the (wip) Tween.ease field. see tween.odin, nothing reads
-// them yet
-EASE_IN :: 0
-EASE_OUT :: 1
-EASE_IN_OUT :: 2
