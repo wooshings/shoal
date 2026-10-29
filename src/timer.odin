@@ -18,8 +18,8 @@ TimerFired :: struct {
 
 // timers stay in a package global for now, deliberately outside the
 // World: they're keyed by name, not owned by an entity, so there's nothing
-// per-world to hang them on yet. same goes for the signal buses and the
-// (wip) tween queue in their own files
+// per-world to hang them on yet. same goes for the signal buses in their
+// own file
 @(private)
 timers: map[string]Timer
 
@@ -32,6 +32,13 @@ start_timer :: proc(time: f32, signal: string) {
 		signal   = signal,
 	}
 	timers[signal] = new_timer
+}
+
+// remove the timer stored under this name entirely, freeing its map entry.
+// safe to call for a name that isn't running (no-op). this is for releasing
+// timers you created, not for reading them out -- use get_timer for that
+stop_timer :: proc(signal: string) {
+	delete_key(&timers, signal)
 }
 
 // the timer stored under this name, or a zero Timer if there is none. an
