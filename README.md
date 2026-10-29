@@ -55,7 +55,7 @@ main :: proc() {
 systems are procedures that run on set schedules
 
 a schedule determines when a procedure runs\
-there are 3 of them, and `run()` walks them in this order:
+there are 4 of them, and `run()` walks them in this order:
 
 - `STARTUP`: once, before the first frame
 - `UPDATE`: every frame, your main logic
