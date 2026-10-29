@@ -20,7 +20,9 @@ my silly little ecs engine for odin and raylib :3
 ## install
 clone this repo in your project directory
 
-```git clone https://git.egfk.net/harper/shoal```
+```sh
+git clone https://git.egfk.net/harper/shoal
+```
 
 and import the package
 
@@ -53,11 +55,12 @@ main :: proc() {
 systems are procedures that run on set schedules
 
 a schedule determines when a procedure runs\
-there are 8 of them, and `run()` walks them in this order:
+there are 3 of them, and `run()` walks them in this order:
 
 - `STARTUP`: once, before the first frame
 - `UPDATE`: every frame, your main logic
 - `DRAW`: every frame, inside the frame. this is where your raylib draw calls go
+- `DESTROY`: once, after the last frame, on shutdown
 
 systems registered on the same schedule run in registration order: whoever was `add_system()`ed first runs first, including the systems your plugins add. plugins themselves always run once before *all* the `STARTUP` systems, no matter when you `add_plugin()` them, so adding `add_plugin(&app, ecs.DefaultPlugin)` first doesn't change *when* DefaultPlugin runs. it just puts shoal's defaults at the front of each schedule, which is still a good habit.
 
@@ -155,6 +158,8 @@ example_system :: proc(world: ^ecs.World) {
 }
 ```
 
+`single()` panics with a message naming the component (`single: no entity has component ExampleComponent`) if nobody in the world has it yet
+
 and once you have an entity id, `get_component()` reaches into any component type to get that entity's copy, handy for components that live alongside another one (a sprite's `TransformComponent`, say)
 
 ```odin
@@ -164,7 +169,21 @@ example_system :: proc(world: ^ecs.World) {
 }
 ```
 
-no existence check though: only ask for entities you know have that component.
+`get_component()` panics with a message naming the entity and the component (`get_component: entity 3 has no component OtherExampleComponent`) if that entity never got that component. it used to hand back whatever was at index 0 of the storage instead, which crashed the app with a bounds error as soon as nothing was there — the panic is the fixed version of that
+
+if you're not sure whether the entity has it (probing a component another system or plugin owns, say), ask first. `has_component()` answers yes/no, and `try_get_component()` hands back the component and a flag, `(nil, false)` instead of a panic when it's missing
+
+```odin
+example_system :: proc(world: ^ecs.World) {
+  if ecs.has_component(world, entity_id, OtherExampleComponent) {
+    // ...
+  }
+
+  if other, ok := ecs.try_get_component(world, entity_id, OtherExampleComponent); ok {
+    // use other
+  }
+}
+```
 
 ### plugins
 plugins are a procedure that takes `^App` as a parameter, the one bit of privilege over regular systems, which only ever see `^World`. a plugin can register systems and plugins on the app the same way main() does, and reach the game data through `get_world(app)`
@@ -246,7 +265,7 @@ main :: proc() {
 }
 ```
 
-`ui.UIPlugin` registers `init()` at STARTUP (uploads microui's atlas texture), `begin()` at PRE_DRAW (forwards raylib input and starts the frame), frees the frame's temp memory and runs `end()` at POST_DRAW (renders the ui), and `destroy()` at DESTROY.
+`ui.UIPlugin` registers `init()` at STARTUP (uploads microui's atlas texture), `begin()` at PRE_DRAW (forwards raylib input and starts the frame), `end()` at LATE_DRAW (renders the ui after all game drawing, inside the raylib frame), frees the frame's temp memory at POST_DRAW, and `destroy()` at DESTROY.
 
 your system builds the ui against the context `get_ctx()` hands back during the frame
 
@@ -258,6 +277,3 @@ my_ui :: proc() {
   }
 }
 ```
-
-### tween
-wip: tweens don't do anything yet. `tween.odin` ships `Tween`, `start_tween()`, `create_tween()` (a stub that returns an empty `Tween` and ignores its arguments), `update_tween_system()` (empty, and no schedule registers it) and a few sine easing helpers nothing calls. don't build on it. the `EASE_IN`/`EASE_OUT`/`EASE_IN_OUT` constants are ids for the unused `Tween.ease` field.
