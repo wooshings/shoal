@@ -1,6 +1,6 @@
 # shoal
 
-> ⚠️ This library is still in early development and updating your projects may cause breaking changes.
+⚠️ This library is still in early development and updating your projects may cause breaking changes.
 
 <img src="assets/logo.png" alt="shoal logo" width="200" height="200">
 
@@ -455,4 +455,4 @@ path in the message:
 ```sh
 odin run examples/audio_demo.odin -file -collection:raylib=<vendor raylib path>
 # with the mp3 absent, expect: panic: play_sound: could not load audio "assets/komm_susser_tod.mp3"
-```
+`
