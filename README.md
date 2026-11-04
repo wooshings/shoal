@@ -76,10 +76,20 @@ main :: proc() {
 }
 ```
 
-a root schedule name (`"startup"`, `"update"`, `"draw"`, `"destroy"`)
-addresses that root's built-in `"default"` set, which is created on first
-use. if your schedule name doesn't match a root, `add_system` panics at
-registration time before the app ever runs, so typos can't hide.
+a system can also take the world. declare it as `proc(world: ^ecs.World)` and
+`run()` hands it the app's world, the same one holding every entity and
+component
+
+```odin
+main :: proc() {
+  ecs.add_system(&app, "startup", example_spawn)
+}
+
+example_spawn :: proc(world: ^ecs.World) {
+  entity := ecs.spawn_entity(world) // the world, no global needed
+  ecs.add_component(world, entity, ExampleComponent{...})
+}
+```
 
 #### system sets
 a **system set** (child schedule) is a named group of systems within a root
@@ -106,27 +116,6 @@ main :: proc() {
 `add_system` resolves the schedule: a child name goes to the root that
 declared it, a root name goes to its `"default"` set, anything else panics.
 a set can't shadow a root name, and cross-root duplicate names panic too.
-
-a system can also take the world. declare it as `proc(world: ^ecs.World)` and
-`run()` hands it the app's world, the same one holding every entity and
-component. that's all a system ever gets: systems structurally can't reach the
-app itself (add_system, init_system_set, plugins, run); only plugins and
-`main()` ever hold an `^App`
-
-```odin
-main :: proc() {
-  ecs.init_system_set(&app, "startup", "spawn")
-  ecs.add_system(&app, "spawn", example_spawn)
-}
-
-example_spawn :: proc(world: ^ecs.World) {
-  entity := ecs.spawn_entity(world) // the world, no global needed
-  ecs.add_component(world, entity, ExampleComponent{...})
-}
-```
-
-plain `proc()` systems work exactly as before. only ask for the world parameter
-when you actually need it
 
 #### ordering: `before()` and `after()`
 `init_system_set` optionally takes `before("other_set")` or `after("other_set")`
@@ -411,10 +400,6 @@ main :: proc() {
 `"draw"` (renders the ui after all game drawing), frees the frame's temp
 memory at `"draw"`, and `destroy()` at `"destroy"`.
 
-> **note**: `shoal/ui` itself has not been migrated to the new scheduling API
-> yet, it still references the old schedule constants and is not compiled by
-> the current build or tests. the snippet above shows the intended usage once
-> it is migrated.
 
 your system builds the ui against the context `get_ctx()` hands back during the
 frame
@@ -427,32 +412,3 @@ my_ui :: proc() {
   }
 }
 ```
-
-## testing
-
-the scheduling system has an in-process test suite plus standalone panic
-probes for its fail-fast paths.
-
-run the test suite (substitute your odin install's vendor raylib path):
-
-```sh
-odin test src -collection:raylib=/opt/homebrew/Cellar/odin/2026-09/libexec/vendor/raylib
-```
-
-the test runner executes tests on multiple threads by default (override with
-`-define:ODIN_TEST_THREADS=N`). the suite is written for that: every test is
-stateless and builds its own `App`, except one
-(`system_dispatch_and_execution_order`) which is the sole owner of the shared
-run-log scratch state.
-
-the panic paths (registering against an undeclared schedule, unknown roots,
-set names shadowing roots, empty set names, cross-root duplicate set names,
-and failed asset loads in `play_sound`/`load_sprite`) can't be asserted
-in-process, Odin has no expect-panic test attribute, so they're verified by
-running a program that triggers one and checking it exits nonzero with the
-path in the message:
-
-```sh
-odin run examples/audio_demo.odin -file -collection:raylib=<vendor raylib path>
-# with the mp3 absent, expect: panic: play_sound: could not load audio "assets/komm_susser_tod.mp3"
-`
