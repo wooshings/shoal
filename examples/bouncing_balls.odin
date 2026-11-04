@@ -1,9 +1,9 @@
 package main
 
+import ecs "../src"
 import "core:math/rand"
 import "core:strconv"
 import "core:strings"
-import ecs "../src"
 import rl "vendor:raylib"
 
 app: ecs.App
@@ -17,21 +17,11 @@ BallComponent :: struct {
 main :: proc() {
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
 
-	// declare child schedules (system sets) under the root schedules
-	ecs.init_system_set(&app, "startup", "window")
-	ecs.init_system_set(&app, "startup", "spawn")
-	ecs.init_system_set(&app, "update", "physics")
-	ecs.init_system_set(&app, "draw", "render")
-	ecs.init_system_set(&app, "draw", "hud")
-
-	// register systems add_system-style: the child schedule name is enough —
-	// "window"/"spawn" resolve to their "startup" parent, "physics" to
-	// "update", "render"/"hud" to "draw"
-	ecs.add_system(&app, "window", setup_window)
-	ecs.add_system(&app, "spawn", spawn_balls)
-	ecs.add_system(&app, "physics", update_balls)
-	ecs.add_system(&app, "render", draw_balls)
-	ecs.add_system(&app, "hud", show_framerate)
+	ecs.add_system(&app, "startup", setup_window)
+	ecs.add_system(&app, "startup", spawn_balls)
+	ecs.add_system(&app, "update", update_balls)
+	ecs.add_system(&app, "draw", draw_balls)
+	ecs.add_system(&app, "draw", show_framerate)
 
 	ecs.run(&app)
 }
@@ -49,11 +39,7 @@ spawn_balls :: proc(world: ^ecs.World) {
 	for i in 0 ..< ball_count {
 		ball := ecs.spawn_entity(world)
 		ecs.add_component(world, ball, BallComponent{5, rand.float32_range(4, 6)})
-		ecs.add_component(
-			world,
-			ball,
-			ecs.Transform{{400, 300}, rand.float32_range(0, 360)},
-		)
+		ecs.add_component(world, ball, ecs.Transform{{400, 300}, rand.float32_range(0, 360)})
 	}
 }
 
