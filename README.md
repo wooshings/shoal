@@ -9,7 +9,7 @@ my silly little ecs engine for odin and raylib :3
 ## contents
 - [install](#install)
 - [usage](#usage)
-  - [schedules](#schedules)
+  - [systems](#systems)
   - [components](#components)
   - [spawn entities](#spawn-entities)
   - [query](#query)
@@ -53,7 +53,7 @@ main :: proc() {
 }
 ```
 
-### schedules
+### systems
 systems are procedures that run on schedules. there are four root schedules,
 and `run()` walks them in this order:
 
