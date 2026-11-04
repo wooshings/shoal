@@ -17,6 +17,7 @@ import rl "vendor:raylib"
 // CursorComponent. add it before your own systems if you want theirs to run
 // first; order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
+	add_plugin(app, AudioPlugin)
 	add_system(app, "startup", startup_window)
 
 	// a plugin runs when run() starts, i.e. after main() has declared and
