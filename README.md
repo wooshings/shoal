@@ -54,55 +54,58 @@ main :: proc() {
 ```
 
 ### schedules
-systems are procedures that run on schedules. there are 4 root schedules, and
-`run()` walks them in this order:
+systems are procedures that run on schedules. there are four root schedules,
+and `run()` walks them in this order:
 
 - `"startup"`: once, before the first frame (plugins run before this)
 - `"update"`: every frame, your main logic (its walk ends with the
-  `"post_update"` set, where shoal clears signal buses)
 - `"draw"`: every frame, inside the raylib frame. this is where your draw calls go
 - `"destroy"`: once, after the last frame, on shutdown
 
-all schedules are strings, no constants needed. the four root schedules are
-the frame backbone; any other schedule name is a **child schedule** (a system
-set) that must be declared with `init_system_set`, telling the engine which
-root it lives under. once declared, you register systems to the child by name
-alone and `add_system` finds its parent automatically.
+systems registered on the same schedule run in registration order: whoever was
+`add_system()`ed first runs first, including the systems your plugins add.
+`add_system` takes three arguments: `app`, the schedule name, and the system
+proc:
 
 ```odin
 main :: proc() {
-  // declare child schedules (system sets) under the 4 root schedules
+  ecs.add_system(&app, "startup", setup_window)
+  ecs.add_system(&app, "update", update_balls)
+  ecs.add_system(&app, "draw", draw_balls)
+  ecs.run(&app)
+}
+```
+
+a root schedule name (`"startup"`, `"update"`, `"draw"`, `"destroy"`)
+addresses that root's built-in `"default"` set, which is created on first
+use. if your schedule name doesn't match a root, `add_system` panics at
+registration time before the app ever runs, so typos can't hide.
+
+#### system sets
+a **system set** (child schedule) is a named group of systems within a root
+schedule. you declare it with `init_system_set`, telling the engine which root
+it lives under:
+
+```odin
+main :: proc() {
   ecs.init_system_set(&app, "startup", "window")
   ecs.init_system_set(&app, "startup", "spawn")
   ecs.init_system_set(&app, "update", "physics")
   ecs.init_system_set(&app, "draw", "render")
   ecs.init_system_set(&app, "draw", "hud")
 
-  // add_system resolves the schedule: child names go to the root that
-  // declared them, root names go to their built-in "default" set
   ecs.add_system(&app, "window", setup_window)
   ecs.add_system(&app, "spawn", spawn_balls)
   ecs.add_system(&app, "physics", update_balls)
   ecs.add_system(&app, "render", draw_balls)
   ecs.add_system(&app, "hud", show_framerate)
+  ecs.run(&app)
 }
 ```
 
-`add_system` (3 args: app, schedule, system) works on any schedule:
-- a root schedule name (`"startup"`, `"update"`, `"draw"`,
-  `"destroy"`) → that root's `"default"` set (created on first use)
-- a declared child schedule name → resolved to the root that declared it,
-  added to that set
-- anything else → panic, at registration time, before the app ever runs.
-  typos can't hide
-
-systems registered on the same schedule run in registration order: whoever was
-`add_system()`ed first runs first, including the systems your plugins add.
-plugins themselves always run once before *all* the `"startup"` systems, no
-matter when you `add_plugin()` them, so adding
-`add_plugin(&app, ecs.DefaultPlugin)` first doesn't change *when* DefaultPlugin
-runs. it just puts shoal's defaults at the front of each schedule, which is
-still a good habit.
+`add_system` resolves the schedule: a child name goes to the root that
+declared it, a root name goes to its `"default"` set, anything else panics.
+a set can't shadow a root name, and cross-root duplicate names panic too.
 
 a system can also take the world. declare it as `proc(world: ^ecs.World)` and
 `run()` hands it the app's world, the same one holding every entity and
@@ -126,7 +129,6 @@ plain `proc()` systems work exactly as before. only ask for the world parameter
 when you actually need it
 
 #### ordering: `before()` and `after()`
-
 `init_system_set` optionally takes `before("other_set")` or `after("other_set")`
 to control where a set is declared:
 
@@ -135,8 +137,6 @@ to control where a set is declared:
 - `after("bar")` inserts the set after "bar" (or at the end if "bar" doesn't
   exist yet)
 - no option, append after the sets declared so far
-
-this is how plugins anchor their systems around user systems:
 
 ```odin
 DefaultPlugin :: proc(app: ^App) {
