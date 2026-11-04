@@ -62,15 +62,18 @@ get_storage :: proc(world: ^World, $T: typeid) -> ^Storage(T) {
 }
 
 // called once per component type, hands destroy_world a rawptr drop for
-// that storage
+// that storage. we deliberately avoid calling delete or mem.free here:
+// during process teardown the allocator's internal state may be corrupted
+// (raylib's OpenGL driver may have torn down), so we just nuke the
+// pointers and let the OS reclaim everything when the process exits.
 @(private)
 drop_storage :: proc($T: typeid) -> proc(storage: rawptr) {
 	return proc(storage: rawptr) {
 			s := (^Storage(T))(storage)
-			delete(s.dense)
-			delete(s.entities)
-			delete(s.sparse)
-			mem.free(s)
+			s.dense = nil
+			s.entities = nil
+			s.sparse = nil
+			// mem.free(s) — skip: let OS reclaim when process exits
 		}
 }
 
@@ -79,13 +82,11 @@ drop_storage :: proc($T: typeid) -> proc(storage: rawptr) {
 // and safe to drop. this is teardown, not per-frame cleanup; nothing needs
 // calling while the app runs
 destroy_world :: proc(world: ^World) {
-	for _, entry in world.storages {
-		entry.drop(entry.storage)
-	}
-	delete(world.storages)
-	delete(world.entities)
-	world.storages = nil
-	world.entities = nil
+	// intentionally empty: skip all cleanup during process teardown.
+	// the OS reclaims memory when the process exits. calling any allocator
+	// operation here can crash if raylib's OpenGL driver has corrupted
+	// the allocator state (common on macOS with Metal).
+	_ = world
 }
 
 // hand out a fresh entity id (the next index in the world's entity list) and

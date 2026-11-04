@@ -5,29 +5,54 @@ import rl "vendor:raylib"
 
 // shoal's out-of-the-box behavior. registers, in frame order:
 //
-//	STARTUP     startup_window (InitWindow from the WindowComponent, 60 fps cap)
-//	UPDATE      run_timers, update_cursor_position
-//	POST_UPDATE signal_system (clears every signal bus)
-//	PRE_DRAW    BeginDrawing + ClearBackground(window.background)
-//	DRAW        draw_sprite (each SpriteComponent drawn at its TransformComponent)
-//	POST_DRAW   EndDrawing
-//	DESTROY     CloseWindow
+//	startup     startup_window (InitWindow from the WindowComponent, 60 fps cap)
+//	update      run_timers, update_cursor_position, then the "post_update"
+//	            set (signal_system clears every signal bus)
+//	draw        pre_draw (BeginDrawing + ClearBackground) -> default
+//	            (draw_sprite) -> your declared sets -> post_draw (EndDrawing)
+//	destroy     CloseWindow
 //
 // and spawns two entities: a display holding the default WindowComponent
 // (800x600, "shoal window", black background) and a cursor holding a
 // CursorComponent. add it before your own systems if you want theirs to run
 // first; order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
-	add_system(app, STARTUP, startup_window)
-	add_system(app, DRAW, draw_sprite)
-	add_system(app, POST_UPDATE, signal_system)
-	add_system(app, UPDATE, run_timers)
-	add_system(app, UPDATE, update_cursor_position)
-	add_system(app, PRE_DRAW, proc(world: ^World) {rl.BeginDrawing()
+	add_system(app, "startup", startup_window)
+
+	// a plugin runs when run() starts, i.e. after main() has declared and
+	// filled its sets — so the draw pipeline is anchored by name instead of
+	// registration order: "pre_draw" is forced to the front (before() with a
+	// missing anchor falls back to the front), the engine's own "default"
+	// set goes right after it, and "post_draw" is declared last, which
+	// appends it after every set main() declared. BeginDrawing always wraps
+	// everything, EndDrawing always runs last
+	init_system_set(app, "draw", "pre_draw", before("default"))
+	init_system_set(app, "draw", "default", after("pre_draw"))
+	add_system(app, "pre_draw", proc(world: ^World) {
 		window, _ := single(world, Window)
-		rl.ClearBackground(window.background)})
-	add_system(app, POST_DRAW, proc() {rl.EndDrawing()})
-	add_system(app, DESTROY, proc() {rl.CloseWindow()})
+		rl.BeginDrawing()
+		rl.ClearBackground(window.background)
+	})
+	// the root name addresses the engine's own "default" set in "draw"
+	add_system(app, "draw", draw_sprite)
+	init_system_set(app, "draw", "post_draw")
+	add_system(app, "post_draw", proc() {rl.EndDrawing()})
+
+	add_system(app, "update", run_timers)
+	add_system(app, "update", update_cursor_position)
+
+	// "post_update" is a child of "update", anchored right after the default
+	// set: user logic registered on "update" (and any sets main() declared)
+	// runs first, then the signal buses clear, then draw. the run_timers
+	// calls above create the default set first, so this anchor resolves
+	// instead of falling back to append
+	init_system_set(app, "update", "post_update", after("default"))
+	add_system(app, "post_update", signal_system)
+
+	// destroy is a real root schedule now (created here), so CloseWindow
+	// runs exactly once, after the frame loop — not every frame under
+	// "update"
+	add_system(app, "destroy", proc() {rl.CloseWindow()})
 
 	// a plugin is one of the few callers that holds an ^App, so it can reach
 	// the world through it and set up entities before the frame loop starts
@@ -36,7 +61,7 @@ DefaultPlugin :: proc(app: ^App) {
 	add_component(
 		world,
 		display,
-		Window{width = 800, height = 600, title = "shoal window", background = rl.BLACK},
+		Window{800, 600, "shoal window", rl.BLACK},
 	)
 
 	cursor := spawn_entity(world)

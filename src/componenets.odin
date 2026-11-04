@@ -3,8 +3,8 @@ package shoal
 import rl "vendor:raylib"
 
 // what the app's window opens with: size, title, and the clear color.
-// DefaultPlugin opens the window from it at STARTUP and paints the clear
-// color at PRE_DRAW
+// DefaultPlugin opens the window from it at "startup" and paints the clear
+// color at "pre_draw" (inline in the "draw" schedule)
 Window :: struct {
 	width:      i32,
 	height:     i32,

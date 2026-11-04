@@ -7,7 +7,7 @@ my silly little ecs engine for odin and raylib :3
 ## contents
 - [install](#install)
 - [usage](#usage)
-  - [systems](#systems)
+  - [schedules and system sets](#schedules-and-system-sets)
   - [components](#components)
   - [spawn entities](#spawn-entities)
   - [query](#query)
@@ -51,41 +51,67 @@ main :: proc() {
 }
 ```
 
-### systems
-systems are procedures that run on set schedules
+### schedules and system sets
+systems are procedures that run on schedules. there are 4 root schedules, and
+`run()` walks them in this order:
 
-a schedule determines when a procedure runs\
-there are 4 of them, and `run()` walks them in this order:
+- `"startup"`: once, before the first frame (plugins run before this)
+- `"update"`: every frame, your main logic (its walk ends with the
+  `"post_update"` set, where shoal clears signal buses)
+- `"draw"`: every frame, inside the raylib frame. this is where your draw calls go
+- `"destroy"`: once, after the last frame, on shutdown
 
-- `STARTUP`: once, before the first frame
-- `UPDATE`: every frame, your main logic
-- `DRAW`: every frame, inside the frame. this is where your raylib draw calls go
-- `DESTROY`: once, after the last frame, on shutdown
-
-systems registered on the same schedule run in registration order: whoever was `add_system()`ed first runs first, including the systems your plugins add. plugins themselves always run once before *all* the `STARTUP` systems, no matter when you `add_plugin()` them, so adding `add_plugin(&app, ecs.DefaultPlugin)` first doesn't change *when* DefaultPlugin runs. it just puts shoal's defaults at the front of each schedule, which is still a good habit.
+all schedules are strings — no constants needed. the four root schedules are
+the frame backbone; any other schedule name is a **child schedule** (a system
+set) that must be declared with `init_system_set`, telling the engine which
+root it lives under. once declared, you register systems to the child by name
+alone and `add_system` finds its parent automatically.
 
 ```odin
 main :: proc() {
-  ecs.add_system(&app, ecs.STARTUP, example_startup)
-  ecs.add_system(&app, ecs.UPDATE, example_update)
-}
+  // declare child schedules (system sets) under the 4 root schedules
+  ecs.init_system_set(&app, "startup", "window")
+  ecs.init_system_set(&app, "startup", "spawn")
+  ecs.init_system_set(&app, "update", "physics")
+  ecs.init_system_set(&app, "draw", "render")
+  ecs.init_system_set(&app, "draw", "hud")
 
-example_startup :: proc() {
-  // system that runs once
-  // ...
-}
-
-example_update :: proc() {
-  // system that runs every frame
-  // ...
+  // add_system resolves the schedule: child names go to the root that
+  // declared them, root names go to their built-in "default" set
+  ecs.add_system(&app, "window", setup_window)
+  ecs.add_system(&app, "spawn", spawn_balls)
+  ecs.add_system(&app, "physics", update_balls)
+  ecs.add_system(&app, "render", draw_balls)
+  ecs.add_system(&app, "hud", show_framerate)
 }
 ```
 
-a system can also take the world. declare it as `proc(world: ^ecs.World)` and `run()` hands it the app's world, the same one holding every entity and component. that's all a system ever gets: systems structurally can't reach the app itself (add_system, plugins, run); only plugins and `main()` ever hold an `^App`
+`add_system` (3 args: app, schedule, system) works on any schedule:
+- a root schedule name (`"startup"`, `"update"`, `"draw"`,
+  `"destroy"`) → that root's `"default"` set (created on first use)
+- a declared child schedule name → resolved to the root that declared it,
+  added to that set
+- anything else → panic, at registration time, before the app ever runs.
+  typos can't hide
+
+systems registered on the same schedule run in registration order: whoever was
+`add_system()`ed first runs first, including the systems your plugins add.
+plugins themselves always run once before *all* the `"startup"` systems, no
+matter when you `add_plugin()` them, so adding
+`add_plugin(&app, ecs.DefaultPlugin)` first doesn't change *when* DefaultPlugin
+runs. it just puts shoal's defaults at the front of each schedule, which is
+still a good habit.
+
+a system can also take the world. declare it as `proc(world: ^ecs.World)` and
+`run()` hands it the app's world, the same one holding every entity and
+component. that's all a system ever gets: systems structurally can't reach the
+app itself (add_system, init_system_set, plugins, run); only plugins and
+`main()` ever hold an `^App`
 
 ```odin
 main :: proc() {
-  ecs.add_system(&app, ecs.STARTUP, example_spawn)
+  ecs.init_system_set(&app, "startup", "spawn")
+  ecs.add_system(&app, "spawn", example_spawn)
 }
 
 example_spawn :: proc(world: ^ecs.World) {
@@ -94,19 +120,56 @@ example_spawn :: proc(world: ^ecs.World) {
 }
 ```
 
-plain `proc()` systems work exactly as before. only ask for the world parameter when you actually need it
+plain `proc()` systems work exactly as before. only ask for the world parameter
+when you actually need it
+
+#### ordering: `before()` and `after()`
+
+`init_system_set` optionally takes `before("other_set")` or `after("other_set")`
+to control where a set is declared:
+
+- `before("foo")` — insert the set before "foo" (or at the front if "foo"
+  doesn't exist yet)
+- `after("bar")` — insert the set after "bar" (or at the end if "bar" doesn't
+  exist yet)
+- no option — append after the sets declared so far
+
+this is how plugins anchor their systems around user systems:
+
+```odin
+DefaultPlugin :: proc(app: ^App) {
+  // "pre_draw" to the front, engine "default" after it, "post_draw" last
+  ecs.init_system_set(app, "draw", "pre_draw", before("default"))
+  ecs.init_system_set(app, "draw", "default", after("pre_draw"))
+  ecs.add_system(app, "pre_draw", begin_frame)
+  ecs.add_system(app, "draw", draw_sprite) // the root's built-in "default" set
+  ecs.init_system_set(app, "draw", "post_draw")
+  ecs.add_system(app, "post_draw", end_frame)
+}
+```
+
+plugins run when `ecs.run()` starts — after `main()` has declared its sets —
+so a plugin's own sets are anchored by name (before/after) rather than
+registration order. that's what keeps shoal's `BeginDrawing`/`EndDrawing`
+wrapped around your draw systems no matter when you declared things.
 
 ### components
-components are plain structs. declare one and you're done. the data lives in the world: every component type gets a storage inside it, created automatically the first time you add that component to an entity. there's no global to declare and no registration step
+components are plain structs. declare one and you're done. the data lives in the
+world: every component type gets a storage inside it, created automatically the
+first time you add that component to an entity. there's no global to declare
+and no registration step
 
 ```odin
 ExampleComponent :: struct {}
 ```
 
-each world owns its own storages, keyed by the component's type: two worlds never share data, and a zero `ecs.World{}` is ready to use.
+each world owns its own storages, keyed by the component's type: two worlds
+never share data, and a zero `ecs.World{}` is ready to use.
 
 ### spawn entities
-create a new entity with `spawn_entity()`, which hands out the next id from the world's entity list. ids are never reused. systems get the world as a parameter; in `main()` or a plugin it's `&app.world` (or `ecs.get_world(app)`)
+create a new entity with `spawn_entity()`, which hands out the next id from the
+world's entity list. ids are never reused. systems get the world as a parameter;
+in `main()` or a plugin it's `&app.world` (or `ecs.get_world(app)`)
 
 ```odin
 example_spawn :: proc(world: ^ecs.World) {
@@ -133,10 +196,13 @@ example_spawn :: proc(world: ^ecs.World) {
 }
 ```
 
-either way the world's storage for that component type is created on the spot if this is the first one
+either way the world's storage for that component type is created on the spot
+if this is the first one
 
 ### query
-since a world keeps components of one type together, you can loop through them and pick out what you like. `slice()` and `slice_entity()` pair up by index: `entities[i]` owns `components[i]`
+since a world keeps components of one type together, you can loop through them
+and pick out what you like. `slice()` and `slice_entity()` pair up by index:
+`entities[i]` owns `components[i]`
 
 ```odin
 example_system :: proc(world: ^ecs.World) {
@@ -148,7 +214,9 @@ example_system :: proc(world: ^ecs.World) {
 }
 ```
 
-one caveat: `slice()` hands back the live array inside the world, not a copy, so adding components afterwards can reallocate it out from under you. don't hold one across `add_component()` calls.
+one caveat: `slice()` hands back the live array inside the world, not a copy,
+so adding components afterwards can reallocate it out from under you. don't
+hold one across `add_component()` calls.
 
 or if you know only one entity has the component use `single()`
 
@@ -158,9 +226,12 @@ example_system :: proc(world: ^ecs.World) {
 }
 ```
 
-`single()` panics with a message naming the component (`single: no entity has component ExampleComponent`) if nobody in the world has it yet
+`single()` panics with a message naming the component (`single: no entity has
+component ExampleComponent`) if nobody in the world has it yet
 
-and once you have an entity id, `get_component()` reaches into any component type to get that entity's copy, handy for components that live alongside another one (a sprite's `TransformComponent`, say)
+and once you have an entity id, `get_component()` reaches into any component
+type to get that entity's copy, handy for components that live alongside another
+one (a sprite's `TransformComponent`, say)
 
 ```odin
 example_system :: proc(world: ^ecs.World) {
@@ -169,9 +240,16 @@ example_system :: proc(world: ^ecs.World) {
 }
 ```
 
-`get_component()` panics with a message naming the entity and the component (`get_component: entity 3 has no component OtherExampleComponent`) if that entity never got that component. it used to hand back whatever was at index 0 of the storage instead, which crashed the app with a bounds error as soon as nothing was there — the panic is the fixed version of that
+`get_component()` panics with a message naming the entity and the component
+(`get_component: entity 3 has no component OtherExampleComponent`) if that
+entity never got that component. it used to hand back whatever was at index 0
+of the storage instead, which crashed the app with a bounds error as soon as
+nothing was there — the panic is the fixed version of that
 
-if you're not sure whether the entity has it (probing a component another system or plugin owns, say), ask first. `has_component()` answers yes/no, and `try_get_component()` hands back the component and a flag, `(nil, false)` instead of a panic when it's missing
+if you're not sure whether the entity has it (probing a component another
+system or plugin owns, say), ask first. `has_component()` answers yes/no, and
+`try_get_component()` hands back the component and a flag, `(nil, false)`
+instead of a panic when it's missing
 
 ```odin
 example_system :: proc(world: ^ecs.World) {
@@ -186,11 +264,15 @@ example_system :: proc(world: ^ecs.World) {
 ```
 
 ### plugins
-plugins are a procedure that takes `^App` as a parameter, the one bit of privilege over regular systems, which only ever see `^World`. a plugin can register systems and plugins on the app the same way main() does, and reach the game data through `get_world(app)`
+plugins are a procedure that takes `^App` as a parameter, the one bit of
+privilege over regular systems, which only ever see `^World`. a plugin can
+register systems, schedules, and system sets on the app the same way main()
+does, and reach the game data through `get_world(app)`
 
 ```odin
 ExamplePlugin :: proc(app: ^App) {
-  ecs.add_system(app, ecs.STARTUP, some_plugin_system)
+  ecs.init_system_set(app, "update", "physics", before("default"))
+  ecs.add_system(app, "physics", physics_system)
 
   entity := ecs.spawn_entity(ecs.get_world(app)) // same world the systems will get
   ecs.add_component(ecs.get_world(app), entity, ExampleComponent{...})
@@ -204,25 +286,35 @@ main :: proc() {
 }
 ```
 
-plugins make your scripts reusable. much of shoal's default behavior comes from plugins via `DefaultPlugin()`
+plugins make your scripts reusable. much of shoal's default behavior comes from
+plugins via `DefaultPlugin()`
 
-run() fires every plugin in the order you added them, once, before the STARTUP systems, so everything they register is in place before anything executes
+run() fires every plugin in the order you added them, once, before the
+`"startup"` schedule, so everything they register is in place before anything
+executes
 
 ### signals
-signals are structs your systems can talk to each other with. one system writes a signal with data, another system reads it later in the same frame, as long as the reader runs before `signal_system` clears the buses at POST_UPDATE (see the caveat at the end of this section)
+signals are structs your systems can talk to each other with. one system writes
+a signal with data, another system reads it later in the same frame, as long as
+the reader runs before `signal_system` clears the buses (registered by
+DefaultPlugin in the `"post_update"` set at the end of `"update"`, see the
+caveat at the end of this section)
 
 ```odin
 DamageEvent :: struct { amount: int }
 ```
 
-`write()` queues a signal on a per-type bus. `read()` gives you back every signal of that type written since the last POST_UPDATE (an empty slice if there were none), so you can iterate it. reads don't consume, so any number of systems can read the same signal and its data
+`write()` queues a signal on a per-type bus. `read()` gives you back every
+signal of that type written since the last clear (an empty slice if
+there were none), so you can iterate it. reads don't consume, so any number of
+systems can read the same signal and its data
 
 ```odin
 attack :: proc() {
   ecs.write(DamageEvent{amount = 5})
 }
 
-// registered after attack in UPDATE, so it sees the event the same frame
+// registered after attack in "update", so it sees the event the same frame
 check_damage :: proc() {
   for e in ecs.read(DamageEvent) {
     fmt.println("took damage!", e.amount)
@@ -232,14 +324,26 @@ check_damage :: proc() {
 
 you can also write an empty payload with the bare type: `ecs.write(DamageEvent)`
 
-scheduling caveat: every system sees exactly the signals written since the last `signal_system()` run, and that runs at POST_UPDATE, *before* PRE_DRAW/DRAW. so:
+scheduling caveat: every system sees exactly the signals written since the last
+`signal_system()` run, and that runs in the `"post_update"` set at the end of
+`"update"`, *before* `"draw"`. so:
 
-- systems running before POST_UPDATE (STARTUP/PRE_UPDATE/UPDATE/early POST_UPDATE) see same-frame writes
-- a DRAW system sees none of them, POST_UPDATE already cleared the bus. it only sees signals written after POST_UPDATE by an earlier system in the same frame (say, one DRAW system reacting to another's write)
-- writes made after POST_UPDATE survive the rest of the frame and are picked up by the next frame's PRE_UPDATE/UPDATE systems, then cleared at the next POST_UPDATE. the next frame's DRAW never sees them either
+- systems running before `"post_update"` in the `"update"` walk (the default
+  set and any sets main() declared before the plugin ran) see same-frame
+  writes
+- a `"draw"` system sees none of them, signal_system already cleared the bus.
+  it only sees signals written after signal_system by an earlier system in the
+  same frame (say, one `"draw"` system reacting to another's write)
+- writes made after signal_system survive the rest of the frame and are picked
+  up by the next frame's `"update"` systems, then cleared at the next frame's
+  `"post_update"`. the next frame's `"draw"` never sees them either
 
 ### timers
-timers are named countdowns. they live in a package global for now, deliberately outside the world, since they're keyed by name rather than owned by an entity. `start_timer()` starts one (or restarts one already stored under that name) and `get_timer()` reads it back. anything that never started or already finished reads back zeroed, so a nonzero `lifetime` means "still ticking"
+timers are named countdowns. they live in a package global for now, deliberately
+outside the world, since they're keyed by name rather than owned by an entity.
+`start_timer()` starts one (or restarts one already stored under that name) and
+`get_timer()` reads it back. anything that never started or already finished
+reads back zeroed, so a nonzero `lifetime` means "still ticking"
 
 ```odin
 example_system :: proc() {
@@ -248,12 +352,22 @@ example_system :: proc() {
 }
 ```
 
-timers tick down every frame in `run_timers`, which `DefaultPlugin` registers at UPDATE. the reset fires when the remaining lifetime drops to roughly one frame's delta (it compares against a fresh `GetFrameTime()` call, so it can reset a frame or two early) and resets the entry to `Timer{}`. that's the auto-clear, and why `get_timer()` goes back to zero when you've waited it out.
+timers tick down every frame in `run_timers`, which `DefaultPlugin` registers at
+`"update"`. the reset fires when the remaining lifetime drops to roughly one
+frame's delta (it compares against a fresh `GetFrameTime()` call, so it can
+reset a frame or two early) and resets the entry to `Timer{}`. that's the
+auto-clear, and why `get_timer()` goes back to zero when you've waited it out.
 
-on expiry a `TimerFired{name = ...}` signal is *meant* to be queued for `read(TimerFired)`. wip: as written the reset zeroes the entry before the name is read, so `TimerFired` currently never fires (reading the timers themselves works fine). once that's fixed the usual signal caveat applies: a reader has to run before `signal_system` clears the buses at POST_UPDATE, see the end of the [signals](#signals) section
+on expiry a `TimerFired{name = ...}` signal is *meant* to be queued for
+`read(TimerFired)`. wip: as written the reset zeroes the entry before the name
+is read, so `TimerFired` currently never fires (reading the timers themselves
+works fine). once that's fixed the usual signal caveat applies: a reader has
+to run before `signal_system` clears the buses at `"post_update"`, see the end
+of the [signals](#signals) section
 
 ### ui
-`shoal/ui` wraps microui with its own plugin. add it before any system that wants to draw ui
+`shoal/ui` wraps microui with its own plugin. add it before any system that
+wants to draw ui
 
 ```odin
 import ui "shoal/ui"
@@ -261,13 +375,22 @@ import mu "vendor:microui"
 
 main :: proc() {
   ecs.add_plugin(&app, ui.UIPlugin)
-  ecs.add_system(&app, ecs.DRAW, my_ui)
+  ecs.add_system(&app, "draw", my_ui) // draw's built-in "default" set
 }
 ```
 
-`ui.UIPlugin` registers `init()` at STARTUP (uploads microui's atlas texture), `begin()` at PRE_DRAW (forwards raylib input and starts the frame), `end()` at LATE_DRAW (renders the ui after all game drawing, inside the raylib frame), frees the frame's temp memory at POST_DRAW, and `destroy()` at DESTROY.
+`ui.UIPlugin` registers `init()` at `"draw"` (uploads microui's atlas texture),
+`begin()` at `"draw"` (forwards raylib input and starts the frame), `end()` at
+`"draw"` (renders the ui after all game drawing), frees the frame's temp
+memory at `"draw"`, and `destroy()` at `"destroy"`.
 
-your system builds the ui against the context `get_ctx()` hands back during the frame
+> **note**: `shoal/ui` itself has not been migrated to the new scheduling API
+> yet — it still references the old schedule constants and is not compiled by
+> the current build or tests. the snippet above shows the intended usage once
+> it is migrated.
+
+your system builds the ui against the context `get_ctx()` hands back during the
+frame
 
 ```odin
 my_ui :: proc() {
@@ -276,4 +399,33 @@ my_ui :: proc() {
     mu.label(ui.get_ctx(), "Hello, world")
   }
 }
+```
+
+## testing
+
+the scheduling system has an in-process test suite plus standalone panic
+probes for its fail-fast paths.
+
+run the test suite (substitute your odin install's vendor raylib path):
+
+```sh
+odin test src -collection:raylib=/opt/homebrew/Cellar/odin/2026-09/libexec/vendor/raylib
+```
+
+the test runner executes tests on multiple threads by default (override with
+`-define:ODIN_TEST_THREADS=N`). the suite is written for that: every test is
+stateless and builds its own `App`, except one
+(`system_dispatch_and_execution_order`) which is the sole owner of the shared
+run-log scratch state.
+
+the panic paths (registering against an undeclared schedule, unknown roots,
+set names shadowing roots, empty set names, cross-root duplicate set names)
+can't be asserted in-process — Odin has no expect-panic test attribute — so
+`tests/panic_probe.odin` is a standalone program that runs one case per
+invocation and is expected to exit nonzero with a panic message:
+
+```sh
+odin build tests/panic_probe.odin -file -collection:raylib=<vendor raylib path>
+./panic_probe.bin undeclared_child   # expect: nonzero exit + panic
+# other cases: unknown_root, root_name_as_set, empty_set, cross_root_dup
 ```

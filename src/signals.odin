@@ -3,7 +3,8 @@ package shoal
 // per-type signal bus, created on first use.
 // one system writes a signal with data, any number of other systems read it
 // after. same-frame reads only work until signal_system clears the buses at
-// POST_UPDATE, see read and signal_system below
+// the end of "update" (the "post_update" set, declared by DefaultPlugin),
+// see read and signal_system below
 Bus :: struct($T: typeid) {
 	pending: [dynamic]T,
 }
@@ -39,11 +40,12 @@ clear_bus :: proc($T: typeid) -> proc(b: rawptr) {
 		}
 }
 
-// queue a signal, readable until signal_system clears it at POST_UPDATE.
-// POST_UPDATE runs before PRE_DRAW/DRAW, so a reader only sees what's
-// been written since the last POST_UPDATE: UPDATE systems see same-frame
-// writes, but a DRAW system only sees writes made after this frame's
-// POST_UPDATE (by PRE_DRAW or earlier DRAW systems)
+// queue a signal, readable until signal_system clears it at the end of
+// "update" (the "post_update" set). that runs before "draw", so a reader only
+// sees what's been written since the last clear: systems running before
+// "post_update" in the same frame see same-frame writes, but a "draw" system
+// only sees writes made after this frame's "post_update" (by systems
+// registered on "draw")
 // queue an empty payload by passing the bare type: write(MySignal)
 write :: proc {
 	write_empty,
@@ -60,11 +62,12 @@ write_with_data :: proc(data: $T) {
 	append(&bus.pending, data)
 }
 
-// every signal of type T written since the last POST_UPDATE, non-consuming,
-// empty if none. iterate it: for s in read(MySignal)
+// every signal of type T written since the last clear (end of "update"),
+// non-consuming, empty if none. iterate it: for s in read(MySignal)
 // copied into context.temp_allocator so write() during iteration can't
 // reallocate the pending buffer out from under you. that also means the
 // result dies with the frame's temp arena, don't hold onto it past that
+// (signal_system runs before "draw")
 read :: proc($T: typeid) -> []T {
 	bus := get_bus(T)
 	if len(bus.pending) == 0 {return nil}
@@ -73,11 +76,11 @@ read :: proc($T: typeid) -> []T {
 	return result
 }
 
-// runs at POST_UPDATE, clears every bus so the next frame starts fresh.
-// writes made after it (e.g. in DRAW) survive until the *next* frame's
-// POST_UPDATE, so the rest of this frame and the next frame's
-// PRE_UPDATE/UPDATE systems still read them. the next frame's DRAW
-// never does though, POST_UPDATE gets there first
+// runs in the "post_update" set at the end of "update" (declared by
+// DefaultPlugin), clears every bus so the next frame starts fresh. writes
+// made after it (e.g. in "draw") survive until the *next* frame's clear, so
+// the rest of this frame and the next frame's "update" systems still read
+// them. the next frame's "draw" never does though, the clear gets there first
 signal_system :: proc() {
 	for _, e in buses {
 		e.clear(e.bus)

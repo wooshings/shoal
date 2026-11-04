@@ -24,7 +24,7 @@ TimerFired :: struct {
 timers: map[string]Timer
 
 // start (or restart) a timer under this name. a name that's already running
-// gets overwritten. it starts ticking on the next UPDATE, where run_timers
+// gets overwritten. it starts ticking on the next "update", where run_timers
 // counts it down
 start_timer :: proc(time: f32, signal: string) {
 	new_timer := Timer {
@@ -51,13 +51,13 @@ get_timer :: proc(signal: string) -> Timer {
 	return Timer{}
 }
 
-// registered at UPDATE by DefaultPlugin: ticks every timer down by the frame
+// registered at "update" by DefaultPlugin: ticks every timer down by the frame
 // time, and when the remaining lifetime drops to roughly one frame's delta it
 // resets its entry to Timer{} so get_timer reads it back zeroed. it compares
 // against a fresh GetFrameTime() call, so it can reset a frame or two
 // early. it's meant to then queue TimerFired{name = <timer name>} for
 // read(TimerFired). like any signal, it's readable only until signal_system
-// clears the buses at POST_UPDATE, see signals.odin for how that lands per
+// clears the buses at "post_update", see signals.odin for how that lands per
 // schedule.
 // known bug: the reset writes the same map slot t points at, so t.signal is
 // already "" when it's checked just after and nothing gets queued, so
