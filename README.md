@@ -63,7 +63,7 @@ systems are procedures that run on schedules. there are 4 root schedules, and
 - `"draw"`: every frame, inside the raylib frame. this is where your draw calls go
 - `"destroy"`: once, after the last frame, on shutdown
 
-all schedules are strings — no constants needed. the four root schedules are
+all schedules are strings, no constants needed. the four root schedules are
 the frame backbone; any other schedule name is a **child schedule** (a system
 set) that must be declared with `init_system_set`, telling the engine which
 root it lives under. once declared, you register systems to the child by name
@@ -130,11 +130,11 @@ when you actually need it
 `init_system_set` optionally takes `before("other_set")` or `after("other_set")`
 to control where a set is declared:
 
-- `before("foo")` — insert the set before "foo" (or at the front if "foo"
+- `before("foo")` inserts the set before "foo" (or at the front if "foo"
   doesn't exist yet)
-- `after("bar")` — insert the set after "bar" (or at the end if "bar" doesn't
+- `after("bar")` inserts the set after "bar" (or at the end if "bar" doesn't
   exist yet)
-- no option — append after the sets declared so far
+- no option, append after the sets declared so far
 
 this is how plugins anchor their systems around user systems:
 
@@ -150,7 +150,7 @@ DefaultPlugin :: proc(app: ^App) {
 }
 ```
 
-plugins run when `ecs.run()` starts — after `main()` has declared its sets —
+plugins run when `ecs.run()` starts, after `main()` has declared its sets,
 so a plugin's own sets are anchored by name (before/after) rather than
 registration order. that's what keeps shoal's `BeginDrawing`/`EndDrawing`
 wrapped around your draw systems no matter when you declared things.
@@ -246,7 +246,7 @@ example_system :: proc(world: ^ecs.World) {
 (`get_component: entity 3 has no component OtherExampleComponent`) if that
 entity never got that component. it used to hand back whatever was at index 0
 of the storage instead, which crashed the app with a bounds error as soon as
-nothing was there — the panic is the fixed version of that
+nothing was there, the panic is the fixed version of that
 
 if you're not sure whether the entity has it (probing a component another
 system or plugin owns, say), ask first. `has_component()` answers yes/no, and
@@ -371,14 +371,14 @@ of the [signals](#signals) section
 shoal's `DefaultPlugin` wires in an audio plugin automatically: the device
 opens at `"startup"`, playing streams are kept fed at `"update"` (a stream
 nobody updates goes silent), and everything unloads at `"destroy"`. every
-sound is a music stream under the hood — raylib decodes incrementally from
+sound is a music stream under the hood, raylib decodes incrementally from
 the compressed file, so nothing sits fully decoded in RAM. assets are cached
 by path: the path is the handle, first call loads from disk and every call
 after replays the loaded asset
 
 ```odin
 main :: proc() {
-  // audio comes with DefaultPlugin — no extra plugin to add
+  // audio comes with DefaultPlugin, no extra plugin to add
   ecs.play_sound("sounds/theme.ogg", true) // background music, loops
   ecs.play_sound("sounds/jump.wav")        // one-shot effect
   ecs.set_volume("sounds/jump.wav", 0.5)
@@ -389,7 +389,7 @@ main :: proc() {
 `play_sound` restarts from the top on repeat calls; `loop` makes it wrap at
 the end instead of stopping. `stop`, `pause`, `resume`, and `set_volume`
 control a stream by path. loading a path that doesn't exist panics with the
-path — same fail-fast rule as registering on an undeclared schedule. paths
+path, same fail-fast rule as registering on an undeclared schedule. paths
 are relative to where you run the binary from
 
 ### ui
@@ -412,7 +412,7 @@ main :: proc() {
 memory at `"draw"`, and `destroy()` at `"destroy"`.
 
 > **note**: `shoal/ui` itself has not been migrated to the new scheduling API
-> yet — it still references the old schedule constants and is not compiled by
+> yet, it still references the old schedule constants and is not compiled by
 > the current build or tests. the snippet above shows the intended usage once
 > it is migrated.
 
@@ -448,7 +448,7 @@ run-log scratch state.
 the panic paths (registering against an undeclared schedule, unknown roots,
 set names shadowing roots, empty set names, cross-root duplicate set names,
 and failed asset loads in `play_sound`/`load_sprite`) can't be asserted
-in-process — Odin has no expect-panic test attribute — so they're verified by
+in-process, Odin has no expect-panic test attribute, so they're verified by
 running a program that triggers one and checking it exits nonzero with the
 path in the message:
 
