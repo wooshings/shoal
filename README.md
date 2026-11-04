@@ -75,6 +75,33 @@ main :: proc() {
 }
 ```
 
+a root schedule name (`"startup"`, `"update"`, `"draw"`, `"destroy"`)
+addresses that root's built-in `"default"` set, which is created on first
+use. if your schedule name doesn't match a root, `add_system` panics at
+registration time before the app ever runs, so typos can't hide.
+
+#### system sets
+a **system set** (child schedule) is a named group of systems within a root
+schedule. you declare it with `init_system_set`, telling the engine which root
+it lives under:
+
+```odin
+main :: proc() {
+  ecs.init_system_set(&app, "startup", "window")
+  ecs.init_system_set(&app, "startup", "spawn")
+  ecs.init_system_set(&app, "update", "physics")
+  ecs.init_system_set(&app, "draw", "render")
+  ecs.init_system_set(&app, "draw", "hud")
+
+  ecs.add_system(&app, "window", setup_window)
+  ecs.add_system(&app, "spawn", spawn_balls)
+  ecs.add_system(&app, "physics", update_balls)
+  ecs.add_system(&app, "render", draw_balls)
+  ecs.add_system(&app, "hud", show_framerate)
+  ecs.run(&app)
+}
+```
+
 a system can also take the world. declare it as `proc(world: ^ecs.World)` and
 `run()` hands it the app's world, the same one holding every entity and
 component
