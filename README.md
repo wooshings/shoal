@@ -366,30 +366,29 @@ to run before `signal_system` clears the buses at `"post_update"`, see the end
 of the [signals](#signals) section
 
 ### audio
-`shoal/audio` wraps raylib's audio module with its own plugin. every sound is
-a music stream under the hood: raylib decodes incrementally from the
-compressed file, and the plugin keeps playing streams fed each frame. assets
-are cached by path — the path is the handle, first call loads from disk and
-every call after replays the loaded asset
+shoal's `DefaultPlugin` wires in an audio plugin automatically: the device
+opens at `"startup"`, playing streams are kept fed at `"update"` (a stream
+nobody updates goes silent), and everything unloads at `"destroy"`. every
+sound is a music stream under the hood — raylib decodes incrementally from
+the compressed file, so nothing sits fully decoded in RAM. assets are cached
+by path: the path is the handle, first call loads from disk and every call
+after replays the loaded asset
 
 ```odin
-import audio "shoal/audio"
-
 main :: proc() {
-  ecs.add_plugin(&app, audio.AudioPlugin)
-  audio.play("sounds/theme.ogg", true)   // background music, loops
-  audio.play("sounds/jump.wav")          // one-shot effect
-  audio.set_volume("sounds/jump.wav", 0.5)
-  audio.master_volume(0.8)
+  // audio comes with DefaultPlugin — no extra plugin to add
+  ecs.play_sound("sounds/theme.ogg", true) // background music, loops
+  ecs.play_sound("sounds/jump.wav")        // one-shot effect
+  ecs.set_volume("sounds/jump.wav", 0.5)
+  ecs.master_volume(0.8)
 }
 ```
 
-the plugin opens the audio device at `"startup"`, keeps streams fed at
-`"update"` (a stream nobody updates goes silent), and unloads everything at
-`"destroy"`. `play` restarts from the top on repeat calls; `loop` makes it
-wrap at the end instead of stopping. `stop`, `pause`, `resume`, and
-`set_volume` control a stream by path. everything is a no-op if the audio
-device failed to open (headless builds)
+`play_sound` restarts from the top on repeat calls; `loop` makes it wrap at
+the end instead of stopping. `stop`, `pause`, `resume`, and `set_volume`
+control a stream by path. loading a path that doesn't exist panics with the
+path — same fail-fast rule as registering on an undeclared schedule. paths
+are relative to where you run the binary from
 
 ### ui
 `shoal/ui` wraps microui with its own plugin. add it before any system that
@@ -445,13 +444,13 @@ stateless and builds its own `App`, except one
 run-log scratch state.
 
 the panic paths (registering against an undeclared schedule, unknown roots,
-set names shadowing roots, empty set names, cross-root duplicate set names)
-can't be asserted in-process — Odin has no expect-panic test attribute — so
-`tests/panic_probe.odin` is a standalone program that runs one case per
-invocation and is expected to exit nonzero with a panic message:
+set names shadowing roots, empty set names, cross-root duplicate set names,
+and failed asset loads in `play_sound`/`load_sprite`) can't be asserted
+in-process — Odin has no expect-panic test attribute — so they're verified by
+running a program that triggers one and checking it exits nonzero with the
+path in the message:
 
 ```sh
-odin build tests/panic_probe.odin -file -collection:raylib=<vendor raylib path>
-./panic_probe.bin undeclared_child   # expect: nonzero exit + panic
-# other cases: unknown_root, root_name_as_set, empty_set, cross_root_dup
+odin run examples/audio_demo.odin -file -collection:raylib=<vendor raylib path>
+# with the mp3 absent, expect: panic: play_sound: could not load audio "assets/komm_susser_tod.mp3"
 ```

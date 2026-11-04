@@ -1,5 +1,6 @@
 package shoal
 
+import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
@@ -10,7 +11,8 @@ import rl "vendor:raylib"
 //	            set (signal_system clears every signal bus)
 //	draw        pre_draw (BeginDrawing + ClearBackground) -> default
 //	            (draw_sprite) -> your declared sets -> post_draw (EndDrawing)
-//	destroy     CloseWindow
+//	destroy     unload_textures (cached sprite textures), CloseWindow, then
+//	            the audio plugin's shutdown (unload streams, close device)
 //
 // and spawns two entities: a display holding the default WindowComponent
 // (800x600, "shoal window", black background) and a cursor holding a
@@ -50,9 +52,11 @@ DefaultPlugin :: proc(app: ^App) {
 	init_system_set(app, "update", "post_update", after("default"))
 	add_system(app, "post_update", signal_system)
 
-	// destroy is a real root schedule now (created here), so CloseWindow
-	// runs exactly once, after the frame loop — not every frame under
-	// "update"
+	// destroy is a real root schedule now (created here), so cleanup runs
+	// exactly once, after the frame loop — not every frame under "update".
+	// cached textures unload before CloseWindow (registration order within
+	// a set), since UnloadTexture needs the GL context alive
+	add_system(app, "destroy", unload_textures)
 	add_system(app, "destroy", proc() {rl.CloseWindow()})
 
 	// a plugin is one of the few callers that holds an ^App, so it can reach
@@ -129,15 +133,50 @@ draw_sprite :: proc(world: ^World) {
 	}
 }
 
+// textures are cached by path — the path is the handle, same rule as audio:
+// first call loads from disk, every call after returns the same texture. the
+// cache owns every texture and frees them all at "destroy"
+@(private)
+textures: map[string]rl.Texture
+
+// cache lookup or disk load. panics on a path that can't be loaded: raylib
+// returns a zeroed texture (id 0) on failure and drawing it renders nothing —
+// a typo'd asset path would just show blank forever. same fail-fast rule as
+// play_sound and add_system
+@(private)
+get_texture :: proc(path: string) -> rl.Texture {
+	if t, ok := textures[path]; ok {
+		return t
+	}
+	t := rl.LoadTexture(strings.clone_to_cstring(path))
+	if t.id == 0 {
+		panic(fmt.tprintf("load_sprite: could not load texture %q", path))
+	}
+	textures[path] = t
+	return t
+}
+
+// free every cached texture. registered ahead of CloseWindow — UnloadTexture
+// needs the GL context alive
+@(private)
+unload_textures :: proc() {
+	for _, t in textures {
+		rl.UnloadTexture(t)
+	}
+	delete(textures)
+}
+
 // load a sprite from a file path. returns a Sprite with the loaded texture
-// and default extended fields (full source, 1.0 scale, white tint).
-// see load_sprite_sheet below for splitting a texture into a grid.
+// and default extended fields (full source, 1.0 scale, white tint). textures
+// are cached by path: repeated calls return the same texture instead of
+// reloading, so spawning a hundred entities from one png costs one load.
+// the cache owns the textures — there is no per-sprite unload; everything
+// is freed at "destroy". a path that can't be loaded panics with the path
 //
 //     sprite := load_sprite("images/player.png")
 //     ecs.add_component(world, entity, sprite)
 load_sprite :: proc(path: string) -> Sprite {
-	cpath := strings.clone_to_cstring(path)
-	texture := rl.LoadTexture(cpath)
+	texture := get_texture(path)
 	return Sprite {
 		texture = texture,
 		source = rl.Rectangle{},
@@ -148,15 +187,13 @@ load_sprite :: proc(path: string) -> Sprite {
 
 // load a sprite sheet and split it into individual sprites.
 // cols and rows define the grid. returns a slice of Sprites, one per cell.
-// all returned sprites share the same underlying texture, so calling
-// unload_sprite or unload_sprites on any one entry frees the texture for
-// all of them (see unload_sprite and unload_sprites below).
+// the sheet's texture is cached by path like load_sprite, and all returned
+// sprites share that one cached texture
 //
 //     sprites := load_sprite_sheet("images/sprites.png", 4, 3)
 //     // sprites[0] is top-left, sprites[11] is bottom-right
 load_sprite_sheet :: proc(path: string, cols, rows: int) -> [dynamic]Sprite {
-	cpath := strings.clone_to_cstring(path)
-	texture := rl.LoadTexture(cpath)
+	texture := get_texture(path)
 
 	cell_w := f32(texture.width) / f32(cols)
 	cell_h := f32(texture.height) / f32(rows)
@@ -181,33 +218,6 @@ load_sprite_sheet :: proc(path: string, cols, rows: int) -> [dynamic]Sprite {
 		}
 	}
 	return sprites
-}
-
-// free the texture loaded by load_sprite or an entry from load_sprite_sheet.
-// call this when you no longer need the sprite to avoid GPU memory leaks.
-// note: for sprites from load_sprite_sheet, all entries share the same
-// underlying texture. calling unload_sprite on any one entry unloads that
-// texture for all entries — subsequent use of any other entry from the same
-// sheet will result in undefined behavior (crash or garbage).
-//
-//     sprite := ecs.load_sprite("images/player.png")
-//     // ... use it ...
-//     ecs.unload_sprite(sprite)
-unload_sprite :: proc(sprite: Sprite) {
-	rl.UnloadTexture(sprite.texture)
-}
-
-// free all sprites from a sprite sheet. since all entries share one texture,
-// only one call is needed, but this helper unloads all entries for convenience.
-// see unload_sprite above for the shared-texture caveat.
-//
-//     sprites := ecs.load_sprite_sheet("images/sprites.png", 4, 3)
-//     // ... use them ...
-//     ecs.unload_sprites(sprites)
-unload_sprites :: proc(sprites: [dynamic]Sprite) {
-	if len(sprites) > 0 {
-		rl.UnloadTexture(sprites[0].texture)
-	}
 }
 
 @(private)
