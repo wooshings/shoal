@@ -220,10 +220,10 @@ AudioEntry :: struct {
 // see startup_audio, process_audio_components, cleanup_finished_sounds,
 // and destroy_audio below.
 AudioPlugin :: proc(app: ^App) {
-	add_system(app, STARTUP, startup_audio)
-	add_system(app, UPDATE, process_audio_components)
-	add_system(app, UPDATE, cleanup_finished_sounds)
-	add_system(app, DESTROY, destroy_audio)
+	add_system(app, "startup", startup_audio)
+	add_system(app, "update", process_audio_components)
+	add_system(app, "update", cleanup_finished_sounds)
+	add_system(app, "destroy", destroy_audio)
 }
 
 // init the audio device. only called once at STARTUP by AudioPlugin.
@@ -290,20 +290,19 @@ process_audio_components :: proc(world: ^World) {
 				rl.UpdateMusicStream(v.music)
 
 				// loop handling: if looping and reached end, seek to start
-				if v.looping && rl.GetMusicTimePlayed(v.music) >=
-						rl.GetMusicTimeLength(v.music) {
+				if v.looping && rl.GetMusicTimePlayed(v.music) >= rl.GetMusicTimeLength(v.music) {
 					rl.SeekMusicStream(v.music, 0)
 				}
 			}
 
 		case AudioState.Paused:
-			// do nothing this frame (paused)
+		// do nothing this frame (paused)
 
 		case AudioState.Stopped:
-			// nothing to do; component can be removed by a cleanup system
+		// nothing to do; component can be removed by a cleanup system
 
 		case AudioState.None:
-			// no-op
+		// no-op
 		}
 	}
 }
