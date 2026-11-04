@@ -1,5 +1,7 @@
 # shoal
 
+> ⚠️ This library is still in early development and updating your projects may cause breaking changes.
+
 <img src="assets/logo.png" alt="shoal logo" width="200" height="200">
 
 my silly little ecs engine for odin and raylib :3
