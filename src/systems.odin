@@ -58,11 +58,7 @@ DefaultPlugin :: proc(app: ^App) {
 	// the world through it and set up entities before the frame loop starts
 	world := get_world(app)
 	display := spawn_entity(world)
-	add_component(
-		world,
-		display,
-		Window{800, 600, "shoal window", rl.BLACK},
-	)
+	add_component(world, display, Window{800, 600, "shoal window", rl.BLACK})
 
 	cursor := spawn_entity(world)
 	add_component(world, cursor, Cursor)
@@ -91,7 +87,7 @@ draw_sprite :: proc(world: ^World) {
 		// source rect: zero means the whole texture
 		source := v.source
 		if source == zero_rect {
-			source = rl.Rectangle{
+			source = rl.Rectangle {
 				x      = 0,
 				y      = 0,
 				width  = f32(v.texture.width),
@@ -112,13 +108,10 @@ draw_sprite :: proc(world: ^World) {
 		}
 
 		// origin at center of source (rotation pivot) — Vector2 is positional
-		origin := rl.Vector2{
-			source.width * 0.5,
-			source.height * 0.5,
-		}
+		origin := rl.Vector2{source.width * 0.5, source.height * 0.5}
 
 		// destination rectangle (top-left from Transform, size from scale+flip)
-		dest := rl.Rectangle{
+		dest := rl.Rectangle {
 			x      = transform.translation.x,
 			y      = transform.translation.y,
 			width  = dest_w,
@@ -131,14 +124,7 @@ draw_sprite :: proc(world: ^World) {
 			tint = rl.WHITE
 		}
 
-		rl.DrawTexturePro(
-			v.texture,
-			source,
-			dest,
-			origin,
-			transform.rotation,
-			tint,
-		)
+		rl.DrawTexturePro(v.texture, source, dest, origin, transform.rotation, tint)
 	}
 }
 
@@ -151,11 +137,11 @@ draw_sprite :: proc(world: ^World) {
 load_sprite :: proc(path: string) -> Sprite {
 	cpath := strings.clone_to_cstring(path)
 	texture := rl.LoadTexture(cpath)
-	return Sprite{
+	return Sprite {
 		texture = texture,
-		source  = rl.Rectangle{},
-		scale   = rl.Vector2{1.0, 1.0},
-		tint    = rl.WHITE,
+		source = rl.Rectangle{},
+		scale = rl.Vector2{1.0, 1.0},
+		tint = rl.WHITE,
 	}
 }
 
@@ -177,17 +163,20 @@ load_sprite_sheet :: proc(path: string, cols, rows: int) -> [dynamic]Sprite {
 	sprites := [dynamic]Sprite{}
 	for row := 0; row < rows; row += 1 {
 		for col := 0; col < cols; col += 1 {
-			append(&sprites, Sprite{
-				texture = texture,
-				source = rl.Rectangle{
-					x      = f32(col) * cell_w,
-					y      = f32(row) * cell_h,
-					width  = cell_w,
-					height = cell_h,
+			append(
+				&sprites,
+				Sprite {
+					texture = texture,
+					source = rl.Rectangle {
+						x = f32(col) * cell_w,
+						y = f32(row) * cell_h,
+						width = cell_w,
+						height = cell_h,
+					},
+					scale = rl.Vector2{1.0, 1.0},
+					tint = rl.WHITE,
 				},
-				scale = rl.Vector2{1.0, 1.0},
-				tint  = rl.WHITE,
-			})
+			)
 		}
 	}
 	return sprites

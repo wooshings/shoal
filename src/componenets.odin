@@ -40,29 +40,6 @@ Transform :: struct {
 	rotation:    f32,
 }
 
-// audio state: what an entity's Audio component is doing this frame.
-AudioState :: enum u8 {
-	None,
-	Playing,
-	Paused,
-	Stopped,
-}
-
-// an entity-level audio component: add this to any entity that should
-// play sounds or music. the AudioSystem processes it every UPDATE.
-// one-shot sounds go in `sound`, background music in `music`.
-// both can coexist on the same entity (e.g. a radio playing ambient
-// music with click sounds).
-Audio :: struct {
-	sound:   rl.Sound,   // one-shot effect (frameCount == 0 means none)
-	music:   rl.Music,   // background music (ctxType == 0 means none)
-	state:   AudioState, // what the system should do this frame
-	volume:  f32,        // 0.0 .. 1.0 (default 1.0)
-	pitch:   f32,        // > 1.0 = higher, < 1.0 = lower (default 1.0)
-	pan:     f32,        // -1.0 = left, 0.0 = center, 1.0 = right (default 0.0)
-	looping: bool,       // loop music when it reaches the end
-}
-
 // components are plain struct declarations. the world holds every storage
 // internally, keyed by the component's typeid and created on first add (see
 // get_storage in entities.odin), so there's nothing to declare next to a

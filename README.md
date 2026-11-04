@@ -365,6 +365,32 @@ works fine). once that's fixed the usual signal caveat applies: a reader has
 to run before `signal_system` clears the buses at `"post_update"`, see the end
 of the [signals](#signals) section
 
+### audio
+`shoal/audio` wraps raylib's audio module with its own plugin. every sound is
+a music stream under the hood: raylib decodes incrementally from the
+compressed file, and the plugin keeps playing streams fed each frame. assets
+are cached by path — the path is the handle, first call loads from disk and
+every call after replays the loaded asset
+
+```odin
+import audio "shoal/audio"
+
+main :: proc() {
+  ecs.add_plugin(&app, audio.AudioPlugin)
+  audio.play("sounds/theme.ogg", true)   // background music, loops
+  audio.play("sounds/jump.wav")          // one-shot effect
+  audio.set_volume("sounds/jump.wav", 0.5)
+  audio.master_volume(0.8)
+}
+```
+
+the plugin opens the audio device at `"startup"`, keeps streams fed at
+`"update"` (a stream nobody updates goes silent), and unloads everything at
+`"destroy"`. `play` restarts from the top on repeat calls; `loop` makes it
+wrap at the end instead of stopping. `stop`, `pause`, `resume`, and
+`set_volume` control a stream by path. everything is a no-op if the audio
+device failed to open (headless builds)
+
 ### ui
 `shoal/ui` wraps microui with its own plugin. add it before any system that
 wants to draw ui
