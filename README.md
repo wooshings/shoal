@@ -7,7 +7,7 @@ my silly little ecs engine for odin and raylib :3
 ## contents
 - [install](#install)
 - [usage](#usage)
-  - [schedules and system sets](#schedules-and-system-sets)
+  - [schedules](#schedules)
   - [components](#components)
   - [spawn entities](#spawn-entities)
   - [query](#query)
@@ -51,7 +51,7 @@ main :: proc() {
 }
 ```
 
-### schedules and system sets
+### schedules
 systems are procedures that run on schedules. there are 4 root schedules, and
 `run()` walks them in this order:
 
