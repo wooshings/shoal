@@ -1,7 +1,7 @@
 package main
 
 import ecs "../src"
-import ui "../ui"
+import ui "../plugins/ui"
 import mu "vendor:microui"
 
 main :: proc() {
