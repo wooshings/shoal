@@ -101,17 +101,22 @@ end :: proc(state := global_state) {
 		#partial switch cmd in cmd_variant {
 		// Draw a (single-line) string
 		case ^mu.Command_Text:
-			// cmd.str is a string header pointing into the VLA extra bytes.
-			// We must use Command.size to know how many bytes were allocated,
-			// then slice the raw data and iterate those.
+			// microui stores commands in a flat byte buffer. text data is
+			// appended right after the Command_Text struct as VLA extra
+			// bytes. cmd.str sometimes has the wrong length when read back
+			// from the buffer, so we compute the VLA length from cmd.size
+			// and read the bytes directly from the buffer.
 			draw_position := [2]i32{cmd.pos.x, cmd.pos.y}
-			text_len := cmd.size - size_of(mu.Command_Text)
-			text_bytes := ([^]byte)(cmd)[size_of(mu.Command_Text):][:text_len]
-			for char in text_bytes do if char & 0xc0 != 0x80 {
-				ascii := min(int(char), 127)
-				rect := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + ascii]
-				draw_mu_atlas_texture(state.atlas, rect, draw_position, cmd.color)
-				draw_position.x += rect.w
+			vla_len := int(cmd.size) - size_of(mu.Command_Text)
+			vla_data := ([^]byte)(cmd)[size_of(mu.Command_Text):]
+			for i := 0; i < vla_len; i += 1 {
+				char := vla_data[i]
+				if char & 0xc0 != 0x80 {
+					ascii := min(int(char), 127)
+					rect := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + ascii]
+					draw_mu_atlas_texture(state.atlas, rect, draw_position, cmd.color)
+					draw_position.x += rect.w
+				}
 			}
 		// Draw a rectangle
 		case ^mu.Command_Rect:
