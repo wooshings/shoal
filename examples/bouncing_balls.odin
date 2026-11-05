@@ -78,7 +78,7 @@ draw_balls :: proc(world: ^ecs.World) {
 show_framerate :: proc() {
 	fps_buf: [19]byte
 	framerate := strconv.write_int(fps_buf[:], i64(1 / rl.GetFrameTime()), 10)
-	rl.DrawText(strings.clone_to_cstring(framerate), 0, 0, 24, rl.WHITE)
-	rl.DrawText("   fps", 0, 24, 24, rl.WHITE)
+	// rl.DrawText(strings.clone_to_cstring(framerate), 0, 0, 24, rl.WHITE)
+	rl.DrawFPS(0, 0)
 	rl.DrawText("10000 balls", 0, 24, 24, rl.WHITE)
 }
