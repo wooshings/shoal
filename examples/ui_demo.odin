@@ -1,7 +1,7 @@
 package main
 
-import ecs "../src"
 import ui "../plugins/ui"
+import ecs "../src"
 import mu "vendor:microui"
 
 main :: proc() {
@@ -17,6 +17,13 @@ hello_world :: proc() {
 	if mu.begin_window(ui.get_ctx(), "Test Window", {100, 100, 100, 100}) {
 		defer mu.end_window(ui.get_ctx())
 
-		mu.label(ui.get_ctx(), "Hello, world")
+		mu.label(ui.get_ctx(), "Hello, world. This is a MicroUI window rendered by raylib.")
+	}
+
+	if mu.begin_window(ui.get_ctx(), "Second Test Window", {500, 100, 200, 200}) {
+		defer mu.end_window(ui.get_ctx())
+
+		mu.label(ui.get_ctx(), "this is a second test window")
+		mu.button(ui.get_ctx(), "button")
 	}
 }
