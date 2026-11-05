@@ -40,7 +40,15 @@ spawn_balls :: proc(world: ^ecs.World) {
 		ball := ecs.spawn_entity(world)
 		ecs.add_component(world, ball, BallComponent{5, rand.float32_range(4, 6)})
 		ecs.add_component(world, ball, ecs.Transform{{400, 300}, rand.float32_range(0, 360)})
-		ecs.add_component(world, ball, ecs.Sprite{texture = rl.LoadTexture("assets/gegory.png")})
+		ecs.add_component(
+			world,
+			ball,
+			ecs.Sprite {
+				texture = rl.LoadTexture("assets/gregory.png"),
+				scale = {0.2, 0.2},
+				tint = rl.PURPLE,
+			},
+		)
 	}
 }
 

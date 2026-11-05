@@ -19,8 +19,19 @@ import rl "vendor:raylib"
 // CursorComponent. add it before your own systems if you want theirs to run
 // first; order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
+	// a plugin is one of the few callers that holds an ^App, so it can reach
+	// the world through it and set up entities before the frame loop starts
+	world := get_world(app)
+	display := spawn_entity(world)
+	add_component(world, display, Window{800, 600, "shoal window", rl.BLACK})
+
+	cursor := spawn_entity(world)
+	add_component(world, cursor, Cursor)
+
+	startup_window(world)
+
 	add_plugin(app, AudioPlugin)
-	add_system(app, "startup", startup_window)
+	// add_system(app, "startup", startup_window)
 
 	// a plugin runs when run() starts, i.e. after main() has declared and
 	// filled its sets — so the draw pipeline is anchored by name instead of
@@ -59,14 +70,6 @@ DefaultPlugin :: proc(app: ^App) {
 	add_system(app, "destroy", unload_textures)
 	add_system(app, "destroy", proc() {rl.CloseWindow()})
 
-	// a plugin is one of the few callers that holds an ^App, so it can reach
-	// the world through it and set up entities before the frame loop starts
-	world := get_world(app)
-	display := spawn_entity(world)
-	add_component(world, display, Window{800, 600, "shoal window", rl.BLACK})
-
-	cursor := spawn_entity(world)
-	add_component(world, cursor, Cursor)
 }
 
 @(private)
@@ -100,6 +103,9 @@ draw_sprite :: proc(world: ^World) {
 			}
 		}
 
+		if v.scale.x == 0 {v.scale.x = 1}
+		if v.scale.y == 0 {v.scale.y = 1}
+
 		// destination size: source scaled
 		dest_w := source.width * v.scale.x
 		dest_h := source.height * v.scale.y
@@ -113,7 +119,7 @@ draw_sprite :: proc(world: ^World) {
 		}
 
 		// origin at center of source (rotation pivot) — Vector2 is positional
-		origin := rl.Vector2{source.width * 0.5, source.height * 0.5}
+		origin := rl.Vector2{source.width * 0.5 * v.scale.x, source.height * 0.5 * v.scale.y}
 
 		// destination rectangle (top-left from Transform, size from scale+flip)
 		dest := rl.Rectangle {
@@ -225,4 +231,5 @@ startup_window :: proc(world: ^World) {
 	window, _ := single(world, Window)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
 	rl.SetTargetFPS(60)
+	fmt.println("Window Initialized")
 }
