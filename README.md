@@ -382,6 +382,59 @@ works fine). once that's fixed the usual signal caveat applies: a reader has
 to run before `signal_system` clears the buses at `"post_update"`, see the end
 of the [signals](#signals) section
 
+### camera
+`CameraPlugin` renders the game through a camera. add it after DefaultPlugin, since
+it anchors its sets around the draw pipeline the same way DefaultPlugin anchors
+its own:
+
+```odin
+main :: proc() {
+  ecs.add_plugin(&app, ecs.DefaultPlugin)
+  ecs.add_plugin(&app, ecs.CameraPlugin)
+  ecs.add_system(&app, "draw", my_game) // renders through the camera
+}
+```
+
+a camera is an entity: add a `Camera` component to mark it, and the same entity's
+`Transform` becomes the look-at — `translation` is the world point that appears at
+the viewport center, `rotation` is the camera roll around it. move the camera by
+writing the transform, exactly like moving any other entity. `Camera.zoom` scales
+world space (2.0 = everything twice as big; zero means the default 1.0, same
+zero-means-default rule as a sprite's tint). a `Camera` entity without a
+`Transform` component is a fail-fast panic, like any sprite entity missing one
+
+```odin
+cam := ecs.spawn_entity(world)
+ecs.add_component(world, cam, ecs.Transform{translation = {400, 300}})
+ecs.add_component(world, cam, ecs.Camera{})
+
+// later, any system:
+ecs.get_component(world, cam, ecs.Transform).translation = player_position
+```
+
+the plugin wraps draw's default set in a 2d camera context, so the pipeline is:
+
+- `"pre_draw"` -> `"camera_begin"` (`BeginMode2D`, skipped with no camera) ->
+  `"default"` (draw_sprite and anything registered on the `"draw"` root) ->
+  `"camera_end"` (`EndMode2D`) -> your declared sets -> `"post_draw"`
+
+anything registered on the `"draw"` root renders world space; sets you declared
+with `before("post_draw")` sit after `"camera_end"` and render in plain screen
+space — free HUD/overlay separation. multiple `Camera` components are allowed but
+the first-registered one acts. with no `Camera` component at all rendering is
+exactly as before, so the plugin is opt-in per world
+
+`ecs.cursor_world()` returns the mouse position in camera world space (the raw
+cursor position when no camera is active), for click-to-move and picking:
+
+```odin
+move_to :: proc(world: ^ecs.World) {
+  if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) {
+    target := ecs.cursor_world()
+  }
+}
+```
+
 ### audio
 shoal's `DefaultPlugin` wires in an audio plugin automatically: the device
 opens at `"startup"`, playing streams are kept fed at `"update"` (a stream
@@ -408,11 +461,11 @@ path, same fail-fast rule as registering on an undeclared schedule. paths
 are relative to where you run the binary from
 
 ### ui
-`shoal/ui` wraps microui with its own plugin. add it before any system that
+`shoal/plugins/ui` wraps microui with its own plugin. add it before any system that
 wants to draw ui
 
 ```odin
-import ui "shoal/ui"
+import ui "shoal/plugins/ui"
 import mu "vendor:microui"
 
 main :: proc() {
