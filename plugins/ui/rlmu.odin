@@ -2,6 +2,7 @@ package ui
 
 import "base:runtime"
 import "core:fmt"
+import "core:mem"
 import "core:strings"
 import "core:unicode/utf8"
 import mu "vendor:microui"
@@ -100,21 +101,16 @@ end :: proc(state := global_state) {
 		#partial switch cmd in cmd_variant {
 		// Draw a (single-line) string
 		case ^mu.Command_Text:
-			// This is the top-left position of the first character in the string we need to draw
-			// We will move it to the right as we draw each character
+			// cmd.str is a string header pointing into the VLA extra bytes.
+			// We must use Command.size to know how many bytes were allocated,
+			// then slice the raw data and iterate those.
 			draw_position := [2]i32{cmd.pos.x, cmd.pos.y}
-			// Loop over each character in the text. This "do if" condition ensures that we only process single-byte ASCII characters.
-			for char in cmd.str do if !is_utf8_continuation_byte(char) {
-				// We need to convert the UTF8 character to an plain ASCII integer so that we can use it to index
-				// into the mui default atlas.
-				ascii := char_to_ascii(char)
-				// "mu.default_atlas" is an array of rects for every character and icon in the default atlas texture
-				// "mu.DEFAULT_ATLAS_FONT" stores the index of the atlas rect for the first ASCII character texture
-				// By adding our ascii int to the base index we can get the rect for our char's texture
+			text_len := cmd.size - size_of(mu.Command_Text)
+			text_bytes := ([^]byte)(cmd)[size_of(mu.Command_Text):][:text_len]
+			for char in text_bytes do if char & 0xc0 != 0x80 {
+				ascii := min(int(char), 127)
 				rect := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + ascii]
-				// Now that we have the atlas rect for the current char we can draw it to the screen
 				draw_mu_atlas_texture(state.atlas, rect, draw_position, cmd.color)
-				// Finally, we need to offset our draw position before drawing the next char
 				draw_position.x += rect.w
 			}
 		// Draw a rectangle
