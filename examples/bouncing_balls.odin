@@ -6,20 +6,20 @@ import rl "vendor:raylib"
 
 app: ecs.App
 
-ball_count: int = 10000
-BallComponent :: struct {
+ball_count: int = 100000
+Ball :: struct {
 	radius: f32,
 	speed:  f32,
 }
 
 main :: proc() {
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
+	ecs.init_system_set(&app, "draw", "post_draw", ecs.after("default"))
 
 	ecs.add_system(&app, "startup", setup_window)
 	ecs.add_system(&app, "startup", spawn_balls)
 	ecs.add_system(&app, "update", update_balls)
-	// ecs.add_system(&app, "draw", draw_balls)
-	ecs.add_system(&app, "draw", show_framerate)
+	ecs.add_system(&app, "post_draw", show_framerate)
 
 	ecs.run(&app)
 }
@@ -28,6 +28,8 @@ main :: proc() {
 // default WindowComponent is a world lookup now
 setup_window :: proc(world: ^ecs.World) {
 	window, _ := ecs.single(world, ecs.Window)
+	window.width = 800
+	window.height = 800
 	window.background = rl.BLACK
 }
 
@@ -38,12 +40,12 @@ spawn_balls :: proc(world: ^ecs.World) {
 	// references the same texture id. distinct texture ids defeat raylib's
 	// renderer batching — one draw call per batch instead of one per sprite
 	sprite := ecs.load_sprite("assets/gregory.png")
-	sprite.scale = {0.2, 0.2}
+	sprite.scale = {0.1, 0.1}
 	sprite.tint = rl.PURPLE
 
 	for i in 0 ..< ball_count {
 		ball := ecs.spawn_entity(world)
-		ecs.add_component(world, ball, BallComponent{5, rand.float32_range(4, 6)})
+		ecs.add_component(world, ball, Ball{5, rand.float32_range(4, 6)})
 		ecs.add_component(world, ball, ecs.Transform{{400, 300}, rand.float32_range(0, 360)})
 		ecs.add_component(world, ball, sprite)
 	}
@@ -52,8 +54,8 @@ spawn_balls :: proc(world: ^ecs.World) {
 update_balls :: proc(world: ^ecs.World) {
 	window, _ := ecs.single(world, ecs.Window)
 
-	balls := ecs.slice(world, BallComponent)
-	entities := ecs.slice_entity(world, BallComponent)
+	balls := ecs.slice(world, Ball)
+	entities := ecs.slice_entity(world, Ball)
 	for ball, i in balls {
 		transform := ecs.get_component(world, entities[i], ecs.Transform)
 		pos := transform.translation
@@ -68,8 +70,8 @@ update_balls :: proc(world: ^ecs.World) {
 }
 
 draw_balls :: proc(world: ^ecs.World) {
-	balls := ecs.slice(world, BallComponent)
-	entities := ecs.slice_entity(world, BallComponent)
+	balls := ecs.slice(world, Ball)
+	entities := ecs.slice_entity(world, Ball)
 	for ball, i in balls {
 		transform := ecs.get_component(world, entities[i], ecs.Transform)
 		rl.DrawCircle(
@@ -83,5 +85,5 @@ draw_balls :: proc(world: ^ecs.World) {
 
 show_framerate :: proc() {
 	rl.DrawFPS(0, 0)
-	rl.DrawText("10000 balls", 0, 24, 24, rl.WHITE)
+	rl.DrawText("100000 balls", 0, 24, 24, rl.WHITE)
 }

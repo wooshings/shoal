@@ -242,5 +242,4 @@ startup_window :: proc(world: ^World) {
 	window, _ := single(world, Window)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
 	rl.SetTargetFPS(60)
-	fmt.println("Window Initialized")
 }
