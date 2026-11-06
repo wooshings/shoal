@@ -13,12 +13,11 @@ import ecs "../src"
 import "core:fmt"
 import rl "vendor:raylib"
 
-app: ecs.App
-
 camera_entity: ecs.Entity
 camera_zoom: f32 = 1.0
 
 main :: proc() {
+	app: ecs.App
 	// the camera plugin must come after DefaultPlugin: it anchors its
 	// begin/end sets around draw's "default" set by name
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
