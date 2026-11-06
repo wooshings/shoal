@@ -14,13 +14,13 @@ main :: proc() {
 }
 
 hello_world :: proc() {
-	if mu.begin_window(ui.get_ctx(), "Test Window", {100, 100, 100, 100}) {
+	if mu.begin_window(ui.get_ctx(), "Test Window", {100, 100, 520, 120}) {
 		defer mu.end_window(ui.get_ctx())
 
 		mu.label(ui.get_ctx(), "Hello, world. This is a MicroUI window rendered by raylib.")
 	}
 
-	if mu.begin_window(ui.get_ctx(), "Second Test Window", {500, 100, 200, 200}) {
+	if mu.begin_window(ui.get_ctx(), "Second Test Window", {500, 100, 320, 200}) {
 		defer mu.end_window(ui.get_ctx())
 
 		mu.label(ui.get_ctx(), "this is a second test window")
