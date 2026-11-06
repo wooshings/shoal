@@ -33,6 +33,22 @@ Sprite :: struct {
 	flip_v:   bool,
 }
 
+// build a sprite with the common defaults already in place — full texture,
+// natural size (1.0), white tint — so call sites only pass what they want
+// to change. odin only allows default values on procedures (struct fields
+// can't declare them), so this is the "defaults included" constructor:
+//
+//	sprite := ecs.sprite(tex)                       // natural size, untinted
+//	sprite := ecs.sprite(tex, scale = {0.2, 0.2})   // shrunk, purple below
+sprite :: proc(
+	texture: rl.Texture2D,
+	scale := rl.Vector2{1, 1},
+	tint := rl.WHITE,
+	source := rl.Rectangle{},
+) -> Sprite {
+	return Sprite{texture = texture, scale = scale, tint = tint, source = source}
+}
+
 // 2D translation + rotation, read back by draw_sprite when it places the
 // entity's SpriteComponent
 Transform :: struct {

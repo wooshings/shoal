@@ -14,16 +14,22 @@ import rl "vendor:raylib"
 //	destroy     unload_textures (cached sprite textures), CloseWindow, then
 //	            the audio plugin's shutdown (unload streams, close device)
 //
-// and spawns two entities: a display holding the default WindowComponent
-// (800x600, "shoal window", black background) and a cursor holding a
-// CursorComponent. add it before your own systems if you want theirs to run
-// first; order within a schedule is registration order
+// and spawns two entities: a display holding the WindowComponent the
+// window opens from — the user's own if they configured one with window()
+// before run(), otherwise 800x600 "shoal window", black background — and
+// a cursor holding a CursorComponent. add it before your own systems if
+// you want theirs to run first; order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
 	// a plugin is one of the few callers that holds an ^App, so it can reach
 	// the world through it and set up entities before the frame loop starts
 	world := get_world(app)
-	display := spawn_entity(world)
-	add_component(world, display, Window{800, 600, "shoal window", rl.BLACK})
+	// adopt a window the user configured before run() with window() — size
+	// and title must be in place before startup_window runs InitWindow —
+	// and spawn the out-of-the-box default only when there is none
+	if len(slice(world, Window)) == 0 {
+		display := spawn_entity(world)
+		add_component(world, display, Window{800, 600, "shoal window", rl.BLACK})
+	}
 
 	cursor := spawn_entity(world)
 	add_component(world, cursor, Cursor)
@@ -51,8 +57,12 @@ DefaultPlugin :: proc(app: ^App) {
 	init_system_set(app, "draw", "default", after("pre_draw"))
 	add_system(app, "pre_draw", proc(world: ^World) {
 		window, _ := single(world, Window)
+		bg := window.background
+		if bg == (rl.Color{}) {
+			bg = rl.BLACK
+		}
 		rl.BeginDrawing()
-		rl.ClearBackground(window.background)
+		rl.ClearBackground(bg)
 	})
 	// the root name addresses the engine's own "default" set in "draw"
 	add_system(app, "draw", draw_sprite)
@@ -194,12 +204,8 @@ unload_textures :: proc() {
 //     ecs.add_component(world, entity, sprite)
 load_sprite :: proc(path: string) -> Sprite {
 	texture := get_texture(path)
-	return Sprite {
-		texture = texture,
-		source = rl.Rectangle{},
-		scale = rl.Vector2{1.0, 1.0},
-		tint = rl.WHITE,
-	}
+	// scale/tint/source fall back to the Sprite field defaults
+	return sprite(texture)
 }
 
 // load a sprite sheet and split it into individual sprites.
@@ -220,17 +226,15 @@ load_sprite_sheet :: proc(path: string, cols, rows: int) -> [dynamic]Sprite {
 		for col := 0; col < cols; col += 1 {
 			append(
 				&sprites,
-				Sprite {
-					texture = texture,
+				sprite(
+					texture,
 					source = rl.Rectangle {
 						x = f32(col) * cell_w,
 						y = f32(row) * cell_h,
 						width = cell_w,
 						height = cell_h,
 					},
-					scale = rl.Vector2{1.0, 1.0},
-					tint = rl.WHITE,
-				},
+				),
 			)
 		}
 	}
