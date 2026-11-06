@@ -14,10 +14,9 @@ import ecs "../../src"
 //	if input.is_pressed(input.SPACE) { ... }
 //	pos := input.mouse_position()
 InputPlugin :: proc(app: ^ecs.App) {
-	// reset package-global state so re-running (tests, hot reload) starts
-	// from a clean slate
+	// reset per-run transient state; bindings are user config and may have
+	// been set before run(), so they are left untouched
 	state = State{}
-	clear(&bindings)
 	clear(&input_buffer)
 
 	// poll ahead of user update systems, so a full frame of state is in place
