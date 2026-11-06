@@ -298,6 +298,23 @@ get_world :: proc(app: ^App) -> ^World {
 	return &app.world
 }
 
+// configure the window the engine opens at startup, instead of taking the
+// built-in 800x600 "shoal window". call it before ecs.run() — before or
+// after add_plugin, both work, because plugins only execute inside run()
+// and DefaultPlugin adopts an existing Window component instead of
+// spawning its default over it:
+//
+//	ecs.window(&app, ecs.Window{width: 1280, height: 720, title: "my game"})
+//
+// (width, height, and title are consumed once by InitWindow in the
+// "startup" walk, so a startup-system change would come too late — but the
+// background color stays runtime-configurable, since pre_draw reads it
+// from the component every frame)
+window :: proc(app: ^App, window_config: Window) {
+	world := get_world(app)
+	add_component(world, spawn_entity(world), window_config)
+}
+
 // run every plugin (in registration order), then the "startup" schedule once,
 // then the frame loop: "update" (whose walk ends with the "post_update" set,
 // clearing signal buses) -> "draw", over and over until rl.WindowShouldClose()

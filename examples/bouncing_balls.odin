@@ -13,6 +13,10 @@ Ball :: struct {
 }
 
 main :: proc() {
+	// configure the window instead of the 800x600 "shoal window" default:
+	// must be before ecs.run(), add_plugin can be before or after this
+	ecs.window(&app, ecs.Window{width = 1024, height = 640, title = "bouncing balls"})
+
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
 	ecs.init_system_set(&app, "draw", "post_draw", ecs.after("default"))
 
