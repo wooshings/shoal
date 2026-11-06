@@ -1,14 +1,13 @@
 package main
 
-import input "../plugins/input"
 import ecs "../src"
+import input "../plugins/input"
 import "core:fmt"
-
 
 main :: proc() {
 	app: ecs.App
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
-	ecs.add_plugin(&app, input.InputPlugin)
+	// InputPlugin is now part of DefaultPlugin (promoted into shoal)
 
 	// action mapping: "jump" bound to space, rebindable at runtime
 	input.bind("jump", input.SPACE)

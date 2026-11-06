@@ -12,6 +12,23 @@ package shoal
 // without a window
 
 import "core:testing"
+import rl "vendor:raylib"
+
+// the sprite() constructor must give the defaults draw_sprite documents:
+// natural size, no color change, full texture — so a bare ecs.sprite(tex)
+// draws unshrunk and untinted with no extra setup
+@(test)
+sprite_constructor_uses_natural_defaults :: proc(t: ^testing.T) {
+	s := sprite(rl.Texture2D{})
+	testing.expect(t, s.scale == rl.Vector2{1, 1}, "scale defaults to 1")
+	testing.expect(t, s.tint == rl.WHITE, "tint defaults to WHITE")
+	testing.expect(t, s.source == rl.Rectangle{}, "source defaults to whole texture")
+
+	// explicit values still win over the defaults
+	s = sprite(rl.Texture2D{}, scale = {0.5, 2}, tint = rl.PURPLE)
+	testing.expect(t, s.scale == rl.Vector2{0.5, 2}, "explicit scale respected")
+	testing.expect(t, s.tint == rl.PURPLE, "explicit tint respected")
+}
 
 @(test)
 unload_textures_on_empty_cache_is_a_noop :: proc(t: ^testing.T) {

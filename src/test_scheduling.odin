@@ -233,7 +233,7 @@ default_plugin_owns_its_other_roots :: proc(t: ^testing.T) {
 	expect_set_order(t, &app, "update", []string{"physics", "default", "post_update"})
 	testing.expect(t, len(get_schedule_set_order(&app, "post_update")) == 0, "no post_update root")
 	expect_set_order(t, &app, "destroy", []string{"default"}) // CloseWindow runs once, after the loop
-	expect_set_order(t, &app, "startup", []string{"default"}) // InitWindow AFTER user startup sets
+	expect_set_order(t, &app, "startup", []string{"window"}) // InitWindow runs in the plugin-owned window set
 }
 
 // --- execution ---

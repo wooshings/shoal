@@ -35,6 +35,7 @@ DefaultPlugin :: proc(app: ^App) {
 	add_component(world, cursor, Cursor)
 
 	add_plugin(app, AudioPlugin)
+	add_plugin(app, InputPlugin)
 	// the window opens in a dedicated "window" set that the plugin declares
 	// ahead of the implicit default set. set walk order follows declaration
 	// order, not registration order, so user startup systems registered in
