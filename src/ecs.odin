@@ -135,6 +135,17 @@ add_plugin :: proc(app: ^App, plugin: proc(app: ^App)) {
 	append(&app.plugins, plugin)
 }
 
+// register several plugins in one call: the same as calling add_plugin for
+// each, in order. handy in main() when composing a project from opt-in
+// plugins without touching DefaultPlugin:
+//
+//	ecs.add_plugins(&app, ecs.DefaultPlugin, input.InputPlugin, ui.UIPlugin)
+add_plugins :: proc(app: ^App, plugins: ..proc(app: ^App)) {
+	for p in plugins {
+		append(&app.plugins, p)
+	}
+}
+
 // declare a child schedule (system set) under a root schedule. only declared
 // child names resolve in add_system, and the declaration decides where the
 // set sits in the root's walk order:
