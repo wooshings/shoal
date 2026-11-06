@@ -1,6 +1,6 @@
 package ui
 
-import ecs "../../src"
+import ecs "../../ecs"
 import ml "vendor:microui"
 
 // the microui context UIPlugin refreshes every frame, nil until the first

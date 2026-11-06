@@ -1,4 +1,4 @@
-package shoal
+package ecs
 
 // per-type signal bus, created on first use.
 // one system writes a signal with data, any number of other systems read it

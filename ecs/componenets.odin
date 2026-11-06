@@ -1,4 +1,4 @@
-package shoal
+package ecs
 
 import rl "vendor:raylib"
 

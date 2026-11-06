@@ -1,5 +1,6 @@
 package shoal
 
+
 // tests for the CameraPlugin draw pipeline and the camera 2d build. same
 // shape as the DefaultPlugin pipeline tests in test_scheduling.odin:
 // registration layout only — the begin/end systems are never run here, that

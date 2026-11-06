@@ -1,4 +1,4 @@
-package shoal
+package ecs
 
 import "core:fmt"
 import rl "vendor:raylib"
