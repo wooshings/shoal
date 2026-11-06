@@ -22,3 +22,10 @@ Batteries :: proc(app: ^ecs.App) {
 	ui.UIPlugin(app)
 }
 
+// core only, but with ui available on demand — same as Batteries today, kept
+// as a separate name so callers can express intent and so future splits (e.g.
+// a heavier "full" bundle) don't churn call sites.
+WithUI :: proc(app: ^ecs.App) {
+	ecs.DefaultPlugin(app)
+	ui.UIPlugin(app)
+}
