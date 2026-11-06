@@ -102,10 +102,10 @@ end :: proc(state := global_state) {
 		// Draw a (single-line) string
 		case ^mu.Command_Text:
 			// microui stores commands in a flat byte buffer. text data is
-			// appended right after the Command_Text struct as VLA extra
-			// bytes. cmd.str sometimes has the wrong length when read back
-			// from the buffer, so we compute the VLA length from cmd.size
-			// and read the bytes directly from the buffer.
+			// appended right after the Command_Text struct as VLA extra bytes.
+			// cmd.str is a string header stored inside the struct; its pointer
+			// and length may not be correct when read back from the buffer.
+			// We compute the VLA length from cmd.size and read bytes directly.
 			draw_position := [2]i32{cmd.pos.x, cmd.pos.y}
 			vla_len := int(cmd.size) - size_of(mu.Command_Text)
 			vla_data := ([^]byte)(cmd)[size_of(mu.Command_Text):]

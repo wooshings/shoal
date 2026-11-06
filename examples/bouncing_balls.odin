@@ -2,8 +2,6 @@ package main
 
 import ecs "../src"
 import "core:math/rand"
-import "core:strconv"
-import "core:strings"
 import rl "vendor:raylib"
 
 app: ecs.App
@@ -36,19 +34,18 @@ setup_window :: proc(world: ^ecs.World) {
 // startup system taking the world: spawn_entity wants it, and the balls'
 // components live inside it, no global storage to declare
 spawn_balls :: proc(world: ^ecs.World) {
+	// load once, share everywhere: load_sprite caches by path, so every ball
+	// references the same texture id. distinct texture ids defeat raylib's
+	// renderer batching — one draw call per batch instead of one per sprite
+	sprite := ecs.load_sprite("assets/gregory.png")
+	sprite.scale = {0.2, 0.2}
+	sprite.tint = rl.PURPLE
+
 	for i in 0 ..< ball_count {
 		ball := ecs.spawn_entity(world)
 		ecs.add_component(world, ball, BallComponent{5, rand.float32_range(4, 6)})
 		ecs.add_component(world, ball, ecs.Transform{{400, 300}, rand.float32_range(0, 360)})
-		ecs.add_component(
-			world,
-			ball,
-			ecs.Sprite {
-				texture = rl.LoadTexture("assets/gregory.png"),
-				scale = {0.2, 0.2},
-				tint = rl.PURPLE,
-			},
-		)
+		ecs.add_component(world, ball, sprite)
 	}
 }
 
@@ -85,9 +82,6 @@ draw_balls :: proc(world: ^ecs.World) {
 }
 
 show_framerate :: proc() {
-	fps_buf: [19]byte
-	framerate := strconv.write_int(fps_buf[:], i64(1 / rl.GetFrameTime()), 10)
-	// rl.DrawText(strings.clone_to_cstring(framerate), 0, 0, 24, rl.WHITE)
 	rl.DrawFPS(0, 0)
 	rl.DrawText("10000 balls", 0, 24, 24, rl.WHITE)
 }

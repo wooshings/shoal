@@ -28,10 +28,17 @@ DefaultPlugin :: proc(app: ^App) {
 	cursor := spawn_entity(world)
 	add_component(world, cursor, Cursor)
 
-	startup_window(world)
-
 	add_plugin(app, AudioPlugin)
-	// add_system(app, "startup", startup_window)
+	// the window opens in a dedicated "window" set that the plugin declares
+	// ahead of the implicit default set. set walk order follows declaration
+	// order, not registration order, so user startup systems registered in
+	// main() run with an open window no matter when add_plugin was called —
+	// while the window itself still never opens at registration time.
+	// (InitWindow must run on the main thread on macOS, and the test runner
+	// runs tests on spawned threads, so opening windows inside DefaultPlugin
+	// would trap the whole engine test suite)
+	init_system_set(app, "startup", "window", before("default"))
+	add_system(app, "window", startup_window)
 
 	// a plugin runs when run() starts, i.e. after main() has declared and
 	// filled its sets — so the draw pipeline is anchored by name instead of
@@ -103,12 +110,16 @@ draw_sprite :: proc(world: ^World) {
 			}
 		}
 
-		if v.scale.x == 0 {v.scale.x = 1}
-		if v.scale.y == 0 {v.scale.y = 1}
+		// scale is a local copy: zero values mean 1.0 for the draw, but
+		// nothing is written back to storage. a draw system must not have
+		// side effects on component data
+		scale := v.scale
+		if scale.x == 0 {scale.x = 1}
+		if scale.y == 0 {scale.y = 1}
 
 		// destination size: source scaled
-		dest_w := source.width * v.scale.x
-		dest_h := source.height * v.scale.y
+		dest_w := source.width * scale.x
+		dest_h := source.height * scale.y
 
 		// flip by negating destination size (DrawTexturePro handles this)
 		if v.flip_h {
@@ -119,7 +130,7 @@ draw_sprite :: proc(world: ^World) {
 		}
 
 		// origin at center of source (rotation pivot) — Vector2 is positional
-		origin := rl.Vector2{source.width * 0.5 * v.scale.x, source.height * 0.5 * v.scale.y}
+		origin := rl.Vector2{source.width * 0.5 * scale.x, source.height * 0.5 * scale.y}
 
 		// destination rectangle (top-left from Transform, size from scale+flip)
 		dest := rl.Rectangle {

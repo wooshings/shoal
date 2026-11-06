@@ -21,13 +21,15 @@ default_plugin_wires_audio :: proc(t: ^testing.T) {
 	// DefaultPlugin queues AudioPlugin via add_plugin; run() executes queued
 	// plugins before startup — do that here so audio's systems register too
 	AudioPlugin(&app)
-	// audio's device init is anchored ahead of "default" in the startup walk:
-	// main()'s registrations land in "default" before plugins run, so user
-	// startup systems that play sound must run after the device opens
+	// audio's device init and the plugin's window init each live in their own
+	// set anchored ahead of "default" in the startup walk: main()'s
+	// registrations land in "default" before plugins run, so user startup
+	// systems that play sound or need the GPU must run after both are open
 	order := get_schedule_set_order(&app, "startup")
-	testing.expect(t, len(order) == 2 && order[0] == "audio_init" && order[1] == "default", "audio_init runs before default at startup")
+	testing.expect(t, len(order) == 2 && order[0] == "audio_init" && order[1] == "window", "plugin-owned sets run before default at startup")
 	testing.expect(t, len(get_system(&app, "startup", "audio_init")) == 1, "audio device init in audio_init")
-	testing.expect(t, len(get_system(&app, "startup", "default")) == 1, "only window init in startup default")
+	testing.expect(t, len(get_system(&app, "startup", "window")) == 1, "window init in window set")
+	testing.expect(t, len(get_system(&app, "startup", "default")) == 0, "startup default holds no plugin systems")
 	testing.expect(t, len(get_system(&app, "update", "default")) == 3, "timers + cursor + stream pump")
 	testing.expect(t, len(get_system(&app, "destroy", "default")) == 3, "texture unload + CloseWindow + audio shutdown")
 	// the rest of the pipeline is untouched

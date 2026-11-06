@@ -17,7 +17,12 @@ UIPlugin :: proc(app: ^ecs.App) {
 	ecs.add_system(app, "post_draw", proc() {free_all(context.temp_allocator)})
 	ecs.add_system(app, "pre_draw", proc() {ui_ctx = begin()})
 	ecs.add_system(app, "late_draw", proc() {end()})
-	ecs.add_system(app, "destroy", proc() {destroy()})
+	// the atlas unload lives in its own "atlas" set anchored ahead of
+	// "default": DefaultPlugin registers CloseWindow in the destroy default
+	// set, and plugin registration (here) lands after it, so an unload
+	// appended to default would run with the GL context already gone
+	ecs.init_system_set(app, "destroy", "atlas", ecs.before("default"))
+	ecs.add_system(app, "atlas", proc() {destroy()})
 }
 
 // the microui context for this frame. pass it to every microui call. valid

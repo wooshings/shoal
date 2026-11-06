@@ -40,6 +40,19 @@ Transform :: struct {
 	rotation:    f32,
 }
 
+// marks its entity as a 2d camera. rendering through the camera is centered
+// on the look-at: this entity's own TransformComponent, whose translation is
+// the world point that appears at the viewport center and whose rotation is
+// the camera roll around that point — move the camera by writing the
+// transform, the same way you move any other entity. projection state lives
+// here:
+//   zoom: world scale (2.0 = everything twice as big), zero = 1.0
+// a world with no Camera component renders in plain screen space; with one,
+// the first-registered camera acts (see CameraPlugin in camera.odin)
+Camera :: struct {
+	zoom: f32,
+}
+
 // components are plain struct declarations. the world holds every storage
 // internally, keyed by the component's typeid and created on first add (see
 // get_storage in entities.odin), so there's nothing to declare next to a
