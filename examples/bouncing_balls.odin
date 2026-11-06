@@ -28,8 +28,6 @@ main :: proc() {
 // default WindowComponent is a world lookup now
 setup_window :: proc(world: ^ecs.World) {
 	window, _ := ecs.single(world, ecs.Window)
-	window.width = 800
-	window.height = 800
 	window.background = rl.BLACK
 }
 
@@ -85,5 +83,5 @@ draw_balls :: proc(world: ^ecs.World) {
 
 show_framerate :: proc() {
 	rl.DrawFPS(0, 0)
-	rl.DrawText("100000 balls", 0, 24, 24, rl.WHITE)
+	rl.DrawText("100000 fih", 0, 24, 24, rl.WHITE)
 }
