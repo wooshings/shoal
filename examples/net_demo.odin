@@ -6,6 +6,31 @@ import ecs "../src"
 import net "../plugins/net"
 import rl "vendor:raylib"
 
+// example custom replicated component
+Health :: struct {
+	value: i32,
+}
+
+serialize_health :: proc(world: ^ecs.World, entity: ecs.Entity, buf: ^[dynamic]u8) -> int {
+	h, ok := ecs.try_get_component(world, entity, Health)
+	if !ok { return 0 }
+	// write i32
+	v := h.value
+	for i in 0 ..< 4 { append(buf, u8(v >> (u32(i)*8))) }
+	return 4
+}
+
+deserialize_health :: proc(world: ^ecs.World, entity: ecs.Entity, data: []u8, off: ^int) {
+	h, ok := ecs.try_get_component(world, entity, Health)
+	if !ok {
+		ecs.add_component(world, entity, Health{})
+		h, _ = ecs.try_get_component(world, entity, Health)
+	}
+	v := i32(data[off^]) | (i32(data[off^+1]) << 8) | (i32(data[off^+2]) << 16) | (i32(data[off^+3]) << 24)
+	off^ += 4
+	h.value = v
+}
+
 main :: proc() {
 	args := os.args
 	server_mode := false
@@ -31,6 +56,7 @@ main :: proc() {
 
 	if server_mode {
 		net.configure(net.Config{role = .Server, port = port})
+		net.register_replicated(typeid_of(Health), serialize_health, deserialize_health)
 		app: ecs.App
 		ecs.add_plugin(&app, net.NetPlugin)
 		ecs.add_system(&app, "startup", spawn_world)
@@ -39,6 +65,7 @@ main :: proc() {
 		ecs.run_headless(&app)
 	} else {
 		net.configure(net.Config{role = .Client, host = host, port = port})
+		net.register_replicated(typeid_of(Health), serialize_health, deserialize_health)
 		app: ecs.App
 		ecs.add_plugin(&app, ecs.DefaultPlugin)
 		ecs.add_plugin(&app, net.NetPlugin)
@@ -54,6 +81,7 @@ spawn_world :: proc(world: ^ecs.World) {
 		e := ecs.spawn_entity(world)
 		ecs.add_component(world, e, net.Networked{id = 0, owner = 0})
 		ecs.add_component(world, e, ecs.Transform{translation = {200 + f32(i)*60, 200}, rotation = 0})
+		ecs.add_component(world, e, Health{value = 100})
 	}
 }
 
