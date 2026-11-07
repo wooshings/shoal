@@ -353,6 +353,19 @@ run :: proc(app: ^App) {
 	run_schedule(app, "destroy")
 }
 
+// headless variant: no window, no draw, no WindowShouldClose check. runs
+// plugins + startup once, then loops update until the process is killed.
+// useful for dedicated servers.
+run_headless :: proc(app: ^App) {
+	for p in app.plugins {
+		p(app)
+	}
+	run_schedule(app, "startup")
+	for {
+		run_schedule(app, "update")
+	}
+}
+
 // run one of the five root schedules. systems within each set run in
 // registration order, sets are walked in declaration order.
 run_schedule :: proc(app: ^App, schedule: string) {
