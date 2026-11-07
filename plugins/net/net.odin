@@ -338,7 +338,6 @@ client_update :: proc(world: ^ecs.World) {
 					off += 1
 					if present == 1 {
 						dlen := read_u32(data, &off)
-						fmt.println("recv nid", nid, "comp present, dlen", dlen, "off now", off, "remaining", len(data)-off)
 						sub_off := 0
 						sub := data[off:off+int(dlen)]
 						r.deserialize(world, ent, sub, &sub_off)
@@ -399,6 +398,51 @@ client_update :: proc(world: ^ecs.World) {
 			delete(buf2)
 		}
 	}
+}
+
+// ---- auto (inferred) replication -----------------------------------------
+// for flat, value-type components, the engine can infer serialization by
+// copying the struct's raw bytes — no hand-written procs needed.
+// usage: net.replicate(MyComp)  (or net.register_replicated_auto(MyComp))
+
+auto_serialize :: proc($T: typeid, world: ^ecs.World, entity: ecs.Entity, buf: ^[dynamic]u8) -> int {
+	comp, ok := ecs.try_get_component(world, entity, T)
+	if !ok { return 0 }
+	size := size_of(T)
+	ptr := cast([^]u8)comp
+	for i in 0 ..< size {
+		append(buf, ptr[i])
+	}
+	return size
+}
+
+auto_deserialize :: proc($T: typeid, world: ^ecs.World, entity: ecs.Entity, data: []u8, off: ^int) {
+	comp, ok := ecs.try_get_component(world, entity, T)
+	if !ok {
+		ecs.add_component(world, entity, T{})
+		comp, _ = ecs.try_get_component(world, entity, T)
+	}
+	size := size_of(T)
+	ptr := cast([^]u8)comp
+	for i in 0 ..< size {
+		ptr[i] = data[off^ + i]
+	}
+	off^ += size
+}
+
+register_replicated_auto :: proc($T: typeid) {
+	ser :: proc(world: ^ecs.World, entity: ecs.Entity, buf: ^[dynamic]u8) -> int {
+		return auto_serialize(T, world, entity, buf)
+	}
+	deser :: proc(world: ^ecs.World, entity: ecs.Entity, data: []u8, off: ^int) {
+		auto_deserialize(T, world, entity, data, off)
+	}
+	register_replicated(typeid_of(T), ser, deser)
+}
+
+// convenience alias
+replicate :: proc($T: typeid) {
+	register_replicated_auto(T)
 }
 
 // ---- plugin -------------------------------------------------------------

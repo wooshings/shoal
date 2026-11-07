@@ -38,7 +38,7 @@ main :: proc() {
 
 	if server_mode {
 		net.configure(net.Config{role = .Server, port = port})
-		register_replicated_components()
+		net.replicate(Health)
 		app: ecs.App
 		ecs.add_plugin(&app, net.NetPlugin)
 		ecs.add_system(&app, "startup", spawn_world)
@@ -47,7 +47,7 @@ main :: proc() {
 		ecs.run_headless(&app)
 	} else {
 		net.configure(net.Config{role = .Client, host = host, port = port})
-		register_replicated_components()
+		net.replicate(Health)
 		app: ecs.App
 		ecs.add_plugin(&app, ecs.DefaultPlugin)
 		ecs.add_plugin(&app, net.NetPlugin)
