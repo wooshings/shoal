@@ -108,6 +108,7 @@ server_init :: proc() {
 		return
 	}
 	socket = s
+	netlib.set_blocking(socket, false)
 	fmt.println("net: server listening on port", config.port)
 }
 
@@ -142,13 +143,34 @@ server_update :: proc(world: ^ecs.World) {
 		if len(data) > 0 && data[0] == PACKET_INPUT {
 			off := 1
 			nid := read_u32(data, &off)
+			owner := read_u32(data, &off)
 			x := read_f32(data, &off)
 			y := read_f32(data, &off)
 			rot := read_f32(data, &off)
-			if ent, ok := net_to_entity[nid]; ok {
-				if t, ok2 := ecs.try_get_component(world, ent, ecs.Transform); ok2 {
-					t.translation = {x, y}
-					t.rotation = rot
+			if nid == 0 {
+				// spawn request from a client
+				next_net_id += 1
+				nid = next_net_id
+				ent := ecs.spawn_entity(world)
+				ecs.add_component(world, ent, Networked{id = nid, owner = owner})
+				ecs.add_component(world, ent, ecs.Transform{translation = {x, y}, rotation = rot})
+				net_to_entity[nid] = ent
+				entity_to_net[ent] = nid
+			} else {
+				ent, ok := net_to_entity[nid]
+				if !ok {
+					ent = ecs.spawn_entity(world)
+					ecs.add_component(world, ent, Networked{id = nid, owner = owner})
+					ecs.add_component(world, ent, ecs.Transform{translation = {x, y}, rotation = rot})
+					net_to_entity[nid] = ent
+					entity_to_net[ent] = nid
+				} else {
+				// only apply input for client-owned entities
+				if n2, ok2 := ecs.try_get_component(world, ent, Networked); ok2 && n2.owner == owner && owner != 0 {
+					if t, ok3 := ecs.try_get_component(world, ent, ecs.Transform); ok3 {
+						t.translation = {x, y}
+						t.rotation = rot
+					}
 				}
 			}
 		}
@@ -165,6 +187,7 @@ server_update :: proc(world: ^ecs.World) {
 		ent := ents[i]
 		t, _ := ecs.try_get_component(world, ent, ecs.Transform)
 		write_u32(&sbuf, n.id)
+		write_u32(&sbuf, n.owner)
 		write_f32(&sbuf, t.translation.x)
 		write_f32(&sbuf, t.translation.y)
 		write_f32(&sbuf, t.rotation)
@@ -180,6 +203,7 @@ server_update :: proc(world: ^ecs.World) {
 	}
 	delete(tagged)
 }
+}
 
 // ---- client -------------------------------------------------------------
 
@@ -192,6 +216,7 @@ client_init :: proc() {
 		return
 	}
 	socket = s
+	netlib.set_blocking(socket, false)
 	// resolve server endpoint
 	ep, ok := netlib.parse_endpoint(fmt.tprintf("%s:%d", config.host, config.port))
 	if !ok {
@@ -220,19 +245,23 @@ client_update :: proc(world: ^ecs.World) {
 			count := read_u32(data, &off)
 			for _ in 0 ..< count {
 				nid := read_u32(data, &off)
+				owner := read_u32(data, &off)
 				x := read_f32(data, &off)
 				y := read_f32(data, &off)
 				rot := read_f32(data, &off)
 				ent, ok := net_to_entity[nid]
 				if !ok {
 					ent = ecs.spawn_entity(world)
-					ecs.add_component(world, ent, Networked{id = nid, owner = 0})
+					ecs.add_component(world, ent, Networked{id = nid, owner = owner})
 					ecs.add_component(world, ent, ecs.Transform{translation = {x, y}, rotation = rot})
 					net_to_entity[nid] = ent
 				} else {
 					if t, ok2 := ecs.try_get_component(world, ent, ecs.Transform); ok2 {
 						t.translation = {x, y}
 						t.rotation = rot
+					}
+					if n2, ok3 := ecs.try_get_component(world, ent, Networked); ok3 {
+						n2.owner = owner
 					}
 				}
 			}
@@ -252,6 +281,25 @@ client_update :: proc(world: ^ecs.World) {
 		delete(ping)
 	}
 
+	// spawn request if we don't own an entity yet
+	has_owned := false
+	for i in 0 ..< len(ecs.slice(world, Networked)) {
+		if ecs.slice(world, Networked)[i].owner == client_id && client_id != 0 {
+			has_owned = true
+		}
+	}
+	if !has_owned && client_id != 0 {
+		buf0: [dynamic]u8
+		append(&buf0, PACKET_INPUT)
+		write_u32(&buf0, 0) // net_id 0 = spawn request
+		write_u32(&buf0, client_id)
+		write_f32(&buf0, 400)
+		write_f32(&buf0, 400)
+		write_f32(&buf0, 0)
+		netlib.send_udp(socket, buf0[:], server_endpoint)
+		delete(buf0)
+	}
+
 	// send own player transform (entities we own)
 	for i in 0 ..< len(ecs.slice(world, Networked)) {
 		n := ecs.slice(world, Networked)[i]
@@ -262,6 +310,7 @@ client_update :: proc(world: ^ecs.World) {
 			buf2: [dynamic]u8
 			append(&buf2, PACKET_INPUT)
 			write_u32(&buf2, n.id)
+			write_u32(&buf2, n.owner)
 			write_f32(&buf2, t.translation.x)
 			write_f32(&buf2, t.translation.y)
 			write_f32(&buf2, t.rotation)
