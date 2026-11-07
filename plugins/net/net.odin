@@ -198,6 +198,7 @@ client_init :: proc() {
 	server_endpoint = ep
 	fmt.println("net: client targeting", config.host, config.port)
 	connected = true
+	client_id = 1
 }
 
 @(private)
@@ -276,6 +277,12 @@ net_init :: proc() {
 net_shutdown :: proc() {
 	// nothing special
 }
+
+
+
+// role helpers for game code that needs to branch (e.g. headless vs windowed)
+is_server :: proc() -> bool { return config.role == .Server }
+is_client :: proc() -> bool { return config.role == .Client }
 
 NetPlugin :: proc(app: ^ecs.App) {
 	ecs.init_system_set(app, "startup", "net_init", ecs.before("default"))
