@@ -55,7 +55,7 @@ main :: proc() {
 spawn_server_entities :: proc(world: ^ecs.World) {
 	for i in 0 ..< 5 {
 		e := ecs.spawn_entity(world)
-		ecs.add_component(world, e, ecs.Networked{id = 0, owner = 0})
+		ecs.add_component(world, e, net.Networked{id = 0, owner = 0})
 		ecs.add_component(world, e, ecs.Transform{translation = {200 + f32(i)*60, 200}, rotation = 0})
 	}
 }
@@ -63,7 +63,7 @@ spawn_server_entities :: proc(world: ^ecs.World) {
 move_server_entities :: proc(world: ^ecs.World) {
 	t := f32(0) // placeholder
 	_ = t
-	ents := ecs.slice_entity(world, ecs.Networked)
+	ents := ecs.slice_entity(world, net.Networked)
 	for i in 0 ..< len(ents) {
 		tr, _ := ecs.try_get_component(world, ents[i], ecs.Transform)
 		tr.translation.x += 1
@@ -72,7 +72,7 @@ move_server_entities :: proc(world: ^ecs.World) {
 }
 
 draw_entities :: proc(world: ^ecs.World) {
-	ents := ecs.slice_entity(world, ecs.Networked)
+	ents := ecs.slice_entity(world, net.Networked)
 	for i in 0 ..< len(ents) {
 		tr, _ := ecs.try_get_component(world, ents[i], ecs.Transform)
 		rl.DrawCircle(i32(tr.translation.x), i32(tr.translation.y), 10, rl.BLUE)

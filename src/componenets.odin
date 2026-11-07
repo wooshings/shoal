@@ -56,14 +56,7 @@ Transform :: struct {
 	rotation:    f32,
 }
 
-// marks an entity as replicated over the network. the net plugin syncs
-// the entity's Transform (and any registered payload) between server and
-// clients. net_id is assigned by the server; owner is the client id that
-// controls it (0 = server-owned).
-Networked :: struct {
-	id:    u32,
-	owner: u32,
-}
+// marks its entity as a 2d camera. rendering through the camera is centered
 // on the look-at: this entity's own TransformComponent, whose translation is
 // the world point that appears at the viewport center and whose rotation is
 // the camera roll around that point — move the camera by writing the

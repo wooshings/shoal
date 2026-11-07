@@ -5,7 +5,16 @@ import "core:mem"
 import netlib "core:net"
 import ecs "../../src"
 
-// ---- configuration -------------------------------------------------------
+// ---- component -----------------------------------------------------------
+
+// marks an entity as replicated over the network. the net plugin syncs
+// the entity's Transform between server and clients automatically.
+// net_id is assigned by the server; owner is the client id that controls
+// it (0 = server-owned).
+Networked :: struct {
+	id:    u32,
+	owner: u32,
+}
 
 Role :: enum { Server, Client }
 
@@ -21,10 +30,6 @@ config: Config
 configure :: proc(cfg: Config) {
 	config = cfg
 }
-
-// ---- component alias -----------------------------------------------------
-
-Networked :: ecs.Networked
 
 // ---- state --------------------------------------------------------------
 
@@ -109,9 +114,9 @@ server_init :: proc() {
 @(private)
 server_update :: proc(world: ^ecs.World) {
 	// assign net ids to newly spawned Networked entities
-	ents := ecs.slice_entity(world, ecs.Networked)
+	ents := ecs.slice_entity(world, Networked)
 	for i in 0 ..< len(ents) {
-		n := &ecs.slice(world, ecs.Networked)[i]
+		n := &ecs.slice(world, Networked)[i]
 		if n.id == 0 {
 			next_net_id += 1
 			n.id = next_net_id
@@ -153,7 +158,7 @@ server_update :: proc(world: ^ecs.World) {
 	sbuf: [dynamic]u8
 	write_u32(&sbuf, u32(len(ents)))
 	for i in 0 ..< len(ents) {
-		n := ecs.slice(world, ecs.Networked)[i]
+		n := ecs.slice(world, Networked)[i]
 		ent := ents[i]
 		t, _ := ecs.try_get_component(world, ent, ecs.Transform)
 		write_u32(&sbuf, n.id)
@@ -216,7 +221,7 @@ client_update :: proc(world: ^ecs.World) {
 				ent, ok := net_to_entity[nid]
 				if !ok {
 					ent = ecs.spawn_entity(world)
-					ecs.add_component(world, ent, ecs.Networked{id = nid, owner = 0})
+					ecs.add_component(world, ent, Networked{id = nid, owner = 0})
 					ecs.add_component(world, ent, ecs.Transform{translation = {x, y}, rotation = rot})
 					net_to_entity[nid] = ent
 				} else {
@@ -230,10 +235,10 @@ client_update :: proc(world: ^ecs.World) {
 	}
 
 	// send own player transform (entities we own)
-	for i in 0 ..< len(ecs.slice(world, ecs.Networked)) {
-		n := ecs.slice(world, ecs.Networked)[i]
+	for i in 0 ..< len(ecs.slice(world, Networked)) {
+		n := ecs.slice(world, Networked)[i]
 		if n.owner == client_id && client_id != 0 {
-			ent := ecs.slice_entity(world, ecs.Networked)[i]
+			ent := ecs.slice_entity(world, Networked)[i]
 			t, _ := ecs.try_get_component(world, ent, ecs.Transform)
 			buf2: [dynamic]u8
 			append(&buf2, PACKET_INPUT)
