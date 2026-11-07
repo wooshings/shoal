@@ -145,6 +145,12 @@ read_u32 :: proc(data: []u8, off: ^int) -> u32 {
 }
 
 @(private)
+read_f32 :: proc(data: []u8, off: ^int) -> f32 {
+	bits := read_u32(data, off)
+	return transmute(f32)bits
+}
+
+@(private)
 find_client :: proc(ep: netlib.Endpoint) -> int {
 	for i in 0 ..< len(client_endpoints) {
 		if client_endpoints[i] == ep {
@@ -200,16 +206,16 @@ server_update :: proc(world: ^ecs.World) {
 			off := 1
 			nid := read_u32(data, &off)
 			owner := read_u32(data, &off)
-			// read replicated component data (only Transform for now, but generic)
+			x := read_f32(data, &off)
+			y := read_f32(data, &off)
+			rot := read_f32(data, &off)
 			if nid == 0 {
+				// spawn request from a client
 				next_net_id += 1
 				nid = next_net_id
 				ent := ecs.spawn_entity(world)
 				ecs.add_component(world, ent, Networked{id = nid, owner = owner})
-				// deserialize all registered components
-				for r in replicated {
-					r.deserialize(world, ent, data, &off)
-				}
+				ecs.add_component(world, ent, ecs.Transform{translation = {x, y}, rotation = rot})
 				net_to_entity[nid] = ent
 				entity_to_net[ent] = nid
 			} else {
@@ -217,15 +223,15 @@ server_update :: proc(world: ^ecs.World) {
 				if !ok {
 					ent = ecs.spawn_entity(world)
 					ecs.add_component(world, ent, Networked{id = nid, owner = owner})
-					for r in replicated {
-						r.deserialize(world, ent, data, &off)
-					}
+					ecs.add_component(world, ent, ecs.Transform{translation = {x, y}, rotation = rot})
 					net_to_entity[nid] = ent
 					entity_to_net[ent] = nid
 				} else {
+					// only apply input for client-owned entities
 					if n2, ok2 := ecs.try_get_component(world, ent, Networked); ok2 && n2.owner == owner && owner != 0 {
-						for r in replicated {
-							r.deserialize(world, ent, data, &off)
+						if t, ok3 := ecs.try_get_component(world, ent, ecs.Transform); ok3 {
+							t.translation = {x, y}
+							t.rotation = rot
 						}
 					}
 				}
@@ -332,6 +338,7 @@ client_update :: proc(world: ^ecs.World) {
 					off += 1
 					if present == 1 {
 						dlen := read_u32(data, &off)
+						fmt.println("recv nid", nid, "comp present, dlen", dlen, "off now", off, "remaining", len(data)-off)
 						sub_off := 0
 						sub := data[off:off+int(dlen)]
 						r.deserialize(world, ent, sub, &sub_off)
