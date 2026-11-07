@@ -42,7 +42,6 @@ main :: proc() {
 		app: ecs.App
 		ecs.add_plugin(&app, ecs.DefaultPlugin)
 		ecs.add_plugin(&app, net.NetPlugin)
-		ecs.add_system(&app, "startup", spawn_player)
 		ecs.add_system(&app, "update", client_input)
 		ecs.add_system(&app, "draw", draw_world)
 		ecs.run(&app)
@@ -67,13 +66,6 @@ server_sim :: proc(world: ^ecs.World) {
 		tr.translation.x += 1
 		if tr.translation.x > 700 { tr.translation.x = 100 }
 	}
-}
-
-// client spawns its own player (owned by client) which it controls
-spawn_player :: proc(world: ^ecs.World) {
-	e := ecs.spawn_entity(world)
-	ecs.add_component(world, e, net.Networked{id = 0, owner = 1})
-	ecs.add_component(world, e, ecs.Transform{translation = {400, 400}, rotation = 0})
 }
 
 client_input :: proc(world: ^ecs.World) {
