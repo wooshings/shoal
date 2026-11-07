@@ -134,6 +134,11 @@ server_update :: proc(world: ^ecs.World) {
 			break
 		}
 		data := buf[:n]
+		// register new client endpoint on any packet
+		if find_client(from) == -1 {
+			append(&client_endpoints, from)
+			fmt.println("net: client connected")
+		}
 		if len(data) > 0 && data[0] == PACKET_INPUT {
 			off := 1
 			nid := read_u32(data, &off)
@@ -145,11 +150,6 @@ server_update :: proc(world: ^ecs.World) {
 					t.translation = {x, y}
 					t.rotation = rot
 				}
-			}
-			// register new client endpoint
-			if find_client(from) == -1 {
-				append(&client_endpoints, from)
-				fmt.println("net: client connected")
 			}
 		}
 	}
@@ -212,6 +212,7 @@ client_update :: proc(world: ^ecs.World) {
 		}
 		data := buf[:n]
 		if len(data) > 0 && data[0] == PACKET_SNAPSHOT {
+			connected = true
 			off := 1
 			count := read_u32(data, &off)
 			for _ in 0 ..< count {
@@ -235,12 +236,21 @@ client_update :: proc(world: ^ecs.World) {
 		}
 	}
 
+	// retry until a snapshot arrives: send a ping so the server knows we're here
+	if !connected {
+		ping: [dynamic]u8
+		append(&ping, u8(0))
+		netlib.send_udp(socket, ping[:], server_endpoint)
+		delete(ping)
+	}
+
 	// send own player transform (entities we own)
 	for i in 0 ..< len(ecs.slice(world, Networked)) {
 		n := ecs.slice(world, Networked)[i]
 		if n.owner == client_id && client_id != 0 {
 			ent := ecs.slice_entity(world, Networked)[i]
-			t, _ := ecs.try_get_component(world, ent, ecs.Transform)
+			t, ok := ecs.try_get_component(world, ent, ecs.Transform)
+			if !ok { continue }
 			buf2: [dynamic]u8
 			append(&buf2, PACKET_INPUT)
 			write_u32(&buf2, n.id)
