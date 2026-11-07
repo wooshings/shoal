@@ -9,6 +9,11 @@ import rl "vendor:raylib"
 main :: proc() {
 	args := os.args
 	server_mode := false
+	// allow selecting role via env var (handy for `odin run ...` where
+	// CLI flags are consumed by the compiler: SHOAL_SERVER=1 odin run ...)
+	if v, ok := os.lookup_env_alloc("SHOAL_SERVER", context.temp_allocator); ok && (v == "1" || v == "true" || v == "yes") {
+		server_mode = true
+	}
 	port := 7777
 	host := "127.0.0.1"
 
