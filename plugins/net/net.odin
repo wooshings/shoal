@@ -154,7 +154,10 @@ server_update :: proc(world: ^ecs.World) {
 		}
 	}
 
-	// broadcast snapshot
+	// broadcast snapshot (throttled to 20 Hz)
+	if tick_counter % 3 != 0 {
+		return
+	}
 	sbuf: [dynamic]u8
 	write_u32(&sbuf, u32(len(ents)))
 	for i in 0 ..< len(ents) {
@@ -236,6 +239,11 @@ client_update :: proc(world: ^ecs.World) {
 		}
 	}
 
+	// throttle sends to 20 Hz
+	if tick_counter % 3 != 0 {
+		return
+	}
+
 	// retry until a snapshot arrives: send a ping so the server knows we're here
 	if !connected {
 		ping: [dynamic]u8
@@ -266,7 +274,11 @@ client_update :: proc(world: ^ecs.World) {
 // ---- plugin -------------------------------------------------------------
 
 @(private)
+tick_counter: int
+
+@(private)
 net_update :: proc(world: ^ecs.World) {
+	tick_counter += 1
 	if config.role == .Server {
 		server_update(world)
 	} else {
