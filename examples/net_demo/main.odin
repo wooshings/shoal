@@ -13,6 +13,11 @@ Health :: struct {
 }
 
 
+net_events_plugin :: proc(app: ^ecs.App) {
+	ecs.init_system_set(app, "update", "net_events", ecs.before("post_update"))
+	ecs.add_system(app, "net_events", on_net_events)
+}
+
 main :: proc() {
 	args := os.args
 	server_mode := false
@@ -51,6 +56,7 @@ main :: proc() {
 		app: ecs.App
 		ecs.add_plugin(&app, ecs.DefaultPlugin)
 		ecs.add_plugin(&app, net.NetPlugin)
+		ecs.add_plugin(&app, net_events_plugin)
 		ecs.add_system(&app, "update", client_input)
 		ecs.add_system(&app, "draw", draw_world)
 		ecs.run(&app)
@@ -90,6 +96,16 @@ client_input :: proc(world: ^ecs.World) {
 		if rl.IsKeyDown(rl.KeyboardKey.UP)    { tr.translation.y -= speed }
 		if rl.IsKeyDown(rl.KeyboardKey.DOWN)  { tr.translation.y += speed }
 	}
+}
+
+on_net_events :: proc(world: ^ecs.World) {
+	for s in ecs.read(net.ClientConnected) {
+		fmt.println("SIGNAL: client connected, id=", s.id)
+	}
+	for s in ecs.read(net.ClientDisconnected) {
+		fmt.println("SIGNAL: client disconnected, id=", s.id)
+	}
+	_ = world
 }
 
 draw_world :: proc(world: ^ecs.World) {

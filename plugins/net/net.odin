@@ -34,6 +34,10 @@ Networked :: struct {
 	owner: u32,
 }
 
+// signals emitted by the net plugin (read with ecs.read(net.ClientConnected))
+ClientConnected    :: struct { id: u32 }
+ClientDisconnected :: struct { id: u32 }
+
 // ---- replicated component registry --------------------------------------
 // any component type can be replicated by registering serialize/deserialize
 // procs. Transform is registered automatically. Register your own in a
@@ -98,6 +102,12 @@ socket: netlib.UDP_Socket
 
 @(private)
 client_endpoints: [dynamic]netlib.Endpoint
+
+@(private)
+client_ids: map[netlib.Endpoint]u32
+
+@(private)
+next_client_id: u32 = 1
 
 @(private)
 client_id: u32
@@ -172,6 +182,7 @@ server_init :: proc() {
 	}
 	socket = s
 	err2 := netlib.set_blocking(socket, false)
+	client_ids = make(map[netlib.Endpoint]u32)
 	fmt.println("net: server listening on port", config.port)
 }
 
@@ -197,9 +208,25 @@ server_update :: proc(world: ^ecs.World) {
 		data := buf[:n]
 		if find_client(from) == -1 {
 			append(&client_endpoints, from)
-			fmt.println("net: client connected")
+			cid := next_client_id
+			next_client_id += 1
+			client_ids[from] = cid
+			ecs.write(ClientConnected{id = cid})
+			fmt.println("net: client connected, id", cid)
 		}
-		if len(data) > 0 && data[0] == PACKET_INPUT {
+		if len(data) > 0 && data[0] == 3 { // disconnect
+			if cid, ok := client_ids[from]; ok {
+				ecs.write(ClientDisconnected{id = cid})
+				delete_key(&client_ids, from)
+				for i := 0; i < len(client_endpoints); i += 1 {
+					if client_endpoints[i] == from {
+						ordered_remove(&client_endpoints, i)
+						break
+					}
+				}
+				fmt.println("net: client disconnected, id", cid)
+			}
+		} else if len(data) > 0 && data[0] == PACKET_INPUT {
 			off := 1
 			nid := read_u32(data, &off)
 			owner := read_u32(data, &off)
@@ -313,6 +340,9 @@ client_update :: proc(world: ^ecs.World) {
 		}
 		data := buf[:n]
 		if len(data) > 0 && data[0] == PACKET_SNAPSHOT {
+			if !connected {
+				ecs.write(ClientConnected{id = client_id})
+			}
 			connected = true
 			off := 1
 			count := read_u32(data, &off)
@@ -466,7 +496,15 @@ net_init :: proc() {
 }
 
 @(private)
-net_shutdown :: proc() {}
+net_shutdown :: proc() {
+	if config.role == .Client && connected {
+		buf: [dynamic]u8
+		append(&buf, u8(3))
+		netlib.send_udp(socket, buf[:], server_endpoint)
+		delete(buf)
+	}
+	delete(client_ids)
+}
 
 NetPlugin :: proc(app: ^ecs.App) {
 	ecs.init_system_set(app, "startup", "net_init", ecs.before("default"))
