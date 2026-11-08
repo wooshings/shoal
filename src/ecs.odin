@@ -363,6 +363,7 @@ run_headless :: proc(app: ^App) {
 	run_schedule(app, "startup")
 	for {
 		run_schedule(app, "update")
+		rl.WaitTime(1.0 / 60.0)
 	}
 }
 

@@ -101,4 +101,5 @@ draw_world :: proc(world: ^ecs.World) {
 		if n.owner == 1 { color = rl.RED }
 		rl.DrawCircle(i32(tr.translation.x), i32(tr.translation.y), 10, color)
 	}
+
 }

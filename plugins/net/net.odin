@@ -249,6 +249,7 @@ server_update :: proc(world: ^ecs.World) {
 	for i in 0 ..< len(ents2) {
 		n := ecs.slice(world, Networked)[i]
 		ent := ents2[i]
+		t, _ := ecs.try_get_component(world, ent, ecs.Transform)
 		write_u32(&sbuf, n.id)
 		write_u32(&sbuf, n.owner)
 		// serialize all registered components that the entity has
