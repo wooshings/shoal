@@ -171,7 +171,7 @@ server_init :: proc() {
 		return
 	}
 	socket = s
-	netlib.set_blocking(socket, false)
+	err2 := netlib.set_blocking(socket, false)
 	fmt.println("net: server listening on port", config.port)
 }
 
@@ -192,11 +192,8 @@ server_update :: proc(world: ^ecs.World) {
 
 	// receive packets (non-blocking)
 	buf: [1024]byte
-	for {
-		n, from, err := netlib.recv_udp(socket, buf[:])
-		if err != nil || n <= 0 {
-			break
-		}
+	n, from, err := netlib.recv_udp(socket, buf[:])
+	if err == nil && n > 0 {
 		data := buf[:n]
 		if find_client(from) == -1 {
 			append(&client_endpoints, from)
@@ -210,7 +207,6 @@ server_update :: proc(world: ^ecs.World) {
 			y := read_f32(data, &off)
 			rot := read_f32(data, &off)
 			if nid == 0 {
-				// spawn request from a client
 				next_net_id += 1
 				nid = next_net_id
 				ent := ecs.spawn_entity(world)
@@ -227,7 +223,6 @@ server_update :: proc(world: ^ecs.World) {
 					net_to_entity[nid] = ent
 					entity_to_net[ent] = nid
 				} else {
-					// only apply input for client-owned entities
 					if n2, ok2 := ecs.try_get_component(world, ent, Networked); ok2 && n2.owner == owner && owner != 0 {
 						if t, ok3 := ecs.try_get_component(world, ent, ecs.Transform); ok3 {
 							t.translation = {x, y}
@@ -353,7 +348,8 @@ client_update :: proc(world: ^ecs.World) {
 	if !connected {
 		ping: [dynamic]u8
 		append(&ping, u8(0))
-		netlib.send_udp(socket, ping[:], server_endpoint)
+		bw, err := netlib.send_udp(socket, ping[:], server_endpoint)
+		_ = bw; _ = err
 		delete(ping)
 	}
 

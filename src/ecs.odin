@@ -2,6 +2,7 @@ package shoal
 
 import "core:fmt"
 import rl "vendor:raylib"
+import coretime "core:time"
 
 // ScheduleOption controls where init_system_set inserts a child schedule.
 // before("foo") inserts before "foo" (or at the front if "foo" doesn't
@@ -363,7 +364,7 @@ run_headless :: proc(app: ^App) {
 	run_schedule(app, "startup")
 	for {
 		run_schedule(app, "update")
-		rl.WaitTime(1.0 / 60.0)
+		coretime.sleep(16 * coretime.Millisecond)
 	}
 }
 
