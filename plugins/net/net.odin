@@ -38,6 +38,64 @@ Networked :: struct {
 ClientConnected    :: struct { id: u32 }
 ClientDisconnected :: struct { id: u32 }
 
+// ---- networked signals --------------------------------------------------
+// signals (ecs.write/ecs.read) are in-process. register_signal makes a signal
+// type travel over the network: write_signal(val) on one peer, read it on
+// others via ecs.read(T) (the net plugin re-emits it into the local bus).
+
+NetSignalType :: struct {
+	type_id:      typeid,
+	read_pending:  proc() -> (rawptr, int, int),
+	emit:          proc(data: []u8),
+}
+
+@(private)
+net_signals: [dynamic]NetSignalType
+
+register_signal :: proc($T: typeid) {
+	for ns in net_signals {
+		if ns.type_id == typeid_of(T) { return }
+	}
+	read_pending :: proc() -> (rawptr, int, int) {
+		sigs := ecs.read(T)
+		if len(sigs) == 0 { return nil, 0, size_of(T) }
+		return raw_data(sigs), len(sigs), size_of(T)
+	}
+	emit :: proc(data: []u8) {
+		val: T
+		ptr := cast([^]u8)&val
+		for i in 0 ..< size_of(T) { ptr[i] = data[i] }
+		ecs.write(val)
+	}
+	append(&net_signals, NetSignalType{type_id = typeid_of(T), read_pending = read_pending, emit = emit})
+}
+
+// broadcast a signal value to peers
+write_signal :: proc(val: $T) {
+	idx := -1
+	for i in 0 ..< len(net_signals) {
+		if net_signals[i].type_id == typeid_of(T) { idx = i; break }
+	}
+	if idx == -1 { return }
+
+	buf: [dynamic]u8
+	v := val
+	ptr := cast([^]u8)&v
+	append(&buf, PACKET_SIGNAL)
+	write_u32(&buf, 1)
+	write_u32(&buf, u32(idx))
+	write_u32(&buf, u32(size_of(T)))
+	for i in 0 ..< size_of(T) { append(&buf, ptr[i]) }
+	if config.role == .Server {
+		for i in 0 ..< len(client_endpoints) {
+			netlib.send_udp(socket, buf[:], client_endpoints[i])
+		}
+	} else {
+		netlib.send_udp(socket, buf[:], server_endpoint)
+	}
+	delete(buf)
+}
+
 // ---- replicated component registry --------------------------------------
 // any component type can be replicated by registering serialize/deserialize
 // procs. Transform is registered automatically. Register your own in a
@@ -133,6 +191,7 @@ tick_counter: int
 // packet tags
 PACKET_SNAPSHOT :: u8(1)
 PACKET_INPUT    :: u8(2)
+PACKET_SIGNAL   :: u8(4)
 
 // ---- helpers ------------------------------------------------------------
 
@@ -225,6 +284,30 @@ server_update :: proc(world: ^ecs.World) {
 					}
 				}
 				fmt.println("net: client disconnected, id", cid)
+			}
+		} else if len(data) > 0 && data[0] == PACKET_SIGNAL {
+			off := 1
+			count := read_u32(data, &off)
+			for _ in 0 ..< count {
+				idx := read_u32(data, &off)
+				dlen := read_u32(data, &off)
+				if int(idx) < len(net_signals) {
+					net_signals[idx].emit(data[off:off+int(dlen)])
+					// rebroadcast to other clients
+					fwd: [dynamic]u8
+					append(&fwd, PACKET_SIGNAL)
+					write_u32(&fwd, 1)
+					write_u32(&fwd, idx)
+					write_u32(&fwd, dlen)
+					for i in 0 ..< int(dlen) { append(&fwd, data[off+i]) }
+					for i in 0 ..< len(client_endpoints) {
+						if client_endpoints[i] != from {
+							netlib.send_udp(socket, fwd[:], client_endpoints[i])
+						}
+					}
+					delete(fwd)
+				}
+				off += int(dlen)
 			}
 		} else if len(data) > 0 && data[0] == PACKET_INPUT {
 			off := 1
@@ -339,7 +422,18 @@ client_update :: proc(world: ^ecs.World) {
 			break
 		}
 		data := buf[:n]
-		if len(data) > 0 && data[0] == PACKET_SNAPSHOT {
+		if len(data) > 0 && data[0] == PACKET_SIGNAL {
+			off := 1
+			count := read_u32(data, &off)
+			for _ in 0 ..< count {
+				idx := read_u32(data, &off)
+				dlen := read_u32(data, &off)
+				if int(idx) < len(net_signals) {
+					net_signals[idx].emit(data[off:off+int(dlen)])
+				}
+				off += int(dlen)
+			}
+		} else if len(data) > 0 && data[0] == PACKET_SNAPSHOT {
 			if !connected {
 				ecs.write(ClientConnected{id = client_id})
 			}

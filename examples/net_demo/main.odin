@@ -6,6 +6,9 @@ import ecs "../../src"
 import net "../../plugins/net"
 import rl "vendor:raylib"
 
+// example custom networked signal
+ScoreChanged :: struct { player: u32, score: i32 }
+
 // example custom replicated component
 // @replicated
 Health :: struct {
@@ -44,6 +47,7 @@ main :: proc() {
 	if server_mode {
 		net.configure(net.Config{role = .Server, port = port})
 		net.replicate(Health)
+		net.register_signal(ScoreChanged)
 		app: ecs.App
 		ecs.add_plugin(&app, net.NetPlugin)
 		ecs.add_system(&app, "startup", spawn_world)
@@ -53,6 +57,7 @@ main :: proc() {
 	} else {
 		net.configure(net.Config{role = .Client, host = host, port = port})
 		net.replicate(Health)
+		net.register_signal(ScoreChanged)
 		app: ecs.App
 		ecs.add_plugin(&app, ecs.DefaultPlugin)
 		ecs.add_plugin(&app, net.NetPlugin)
@@ -82,6 +87,12 @@ server_sim :: proc(world: ^ecs.World) {
 		tr.translation.x += 1
 		if tr.translation.x > 700 { tr.translation.x = 100 }
 	}
+	// periodically broadcast a game signal
+	@(static) counter: int
+	counter += 1
+	if counter % 120 == 0 {
+		net.write_signal(ScoreChanged{player = 1, score = i32(counter)})
+	}
 }
 
 client_input :: proc(world: ^ecs.World) {
@@ -104,6 +115,9 @@ on_net_events :: proc(world: ^ecs.World) {
 	}
 	for s in ecs.read(net.ClientDisconnected) {
 		fmt.println("SIGNAL: client disconnected, id=", s.id)
+	}
+	for s in ecs.read(ScoreChanged) {
+		fmt.println("SIGNAL: score changed, player=", s.player, "score=", s.score)
 	}
 	_ = world
 }
