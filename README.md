@@ -457,7 +457,11 @@ ecs.add_component(world, model, ecs.load_model("models/duck.glb"))
 
 `Transform3D.rotation` is euler angles in radians (pitch, yaw, roll), and
 `scale` defaults to `{1, 1, 1}`. `ecs.cursor_ray()` returns the mouse as a
-picking ray through the active 3d camera (a zero ray when none is active)
+picking ray through the active 3d camera (a zero ray when none is active).
+
+lighting uses raylib's default shader: models render with ambient light by
+default, and full directional/point lights are left to user plugins for now
+(raylib has no built-in light helper; see raylib's `rlights` example)
 
 ### audio
 shoal's `DefaultPlugin` wires in an audio plugin automatically: the device
