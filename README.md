@@ -407,6 +407,58 @@ move_to :: proc(world: ^ecs.World) {
 }
 ```
 
+### 3d camera and models
+`Camera3DPlugin` wraps draw's default set in a 3d camera context, the same
+shape as `CameraPlugin` but for 3d. `ModelPlugin` draws every `Model`
+component in world space inside that context. `Default3DPlugin` bundles
+`DefaultPlugin` + `Camera3DPlugin` + `ModelPlugin` for a 3d game:
+
+```odin
+main :: proc() {
+  ecs.add_plugin(&app, ecs.Default3DPlugin)
+  ecs.add_system(&app, "draw", my_game) // renders through the 3d camera
+}
+```
+
+a 3d camera is an entity: add a `Camera3D` component to mark it, and the
+same entity's `Transform3D` becomes the position. the camera looks at
+`Camera3D.target` (zero means one unit forward along +Z), with `up`
+(zero means `{0, 1, 0}`), `fovy` (zero means 45 degrees), and a
+`projection` (perspective by default, or orthographic). a `Camera3D`
+entity without a `Transform3D` component is a fail-fast panic, like any
+sprite entity missing its `Transform`:
+
+```odin
+cam := ecs.spawn_entity(world)
+ecs.add_component(world, cam, ecs.Transform3D{translation = {0, 5, 10}})
+ecs.add_component(world, cam, ecs.Camera3D{target = {0, 0, 0}})
+```
+
+move the camera by writing its transform, exactly like moving any other
+entity. the first-registered `Camera3D` acts; with none at all 3d camera
+mode is skipped entirely, so the plugin is opt-in per world. `CameraPlugin`
+(2d) and `Camera3DPlugin` both wrap the same default set, so use one or the
+other, not both
+
+models are loaded from disk with `load_model` (cached by path, like
+sprites) or generated in memory with `gen_model_cube` / `gen_model_sphere`
+/ `gen_model_plane` for prototyping. placement comes from the entity's
+`Transform3D`:
+
+```odin
+cube := ecs.spawn_entity(world)
+ecs.add_component(world, cube, ecs.Transform3D{translation = {0, 0, 0}, scale = {1, 1, 1}})
+ecs.add_component(world, cube, ecs.gen_model_cube(1, 1, 1))
+
+model := ecs.spawn_entity(world)
+ecs.add_component(world, model, ecs.Transform3D{translation = {2, 0, 0}})
+ecs.add_component(world, model, ecs.load_model("models/duck.glb"))
+```
+
+`Transform3D.rotation` is euler angles in radians (pitch, yaw, roll), and
+`scale` defaults to `{1, 1, 1}`. `ecs.cursor_ray()` returns the mouse as a
+picking ray through the active 3d camera (a zero ray when none is active)
+
 ### audio
 shoal's `DefaultPlugin` wires in an audio plugin automatically: the device
 opens at `"startup"`, playing streams are kept fed at `"update"` (a stream
