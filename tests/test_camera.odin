@@ -87,6 +87,52 @@ build_camera_2d_zero_zoom_defaults_to_one :: proc(t: ^testing.T) {
 	testing.expect(t, cam.zoom == 1.0, "zero zoom -> 1.0")
 }
 
+// --- camera 3d build (pure, no window) ---
+
+@(test)
+build_camera_3d_absent_returns_false :: proc(t: ^testing.T) {
+	world: ecs.World
+	_, ok := ecs.build_camera_3d(&world)
+	testing.expect(t, !ok, "no camera3d component -> not built")
+}
+
+@(test)
+build_camera_3d_with_camera_and_transform :: proc(t: ^testing.T) {
+	world: ecs.World
+	entity := ecs.spawn_entity(&world)
+	ecs.add_component(&world, entity, ecs.Transform3D{translation = {1, 2, 3}})
+	ecs.add_component(&world, entity, ecs.Camera3D{target = {4, 5, 6}, up = {0, 1, 0}, fovy = 60, projection = rl.CameraProjection.PERSPECTIVE})
+
+	cam, ok := ecs.build_camera_3d(&world)
+	testing.expect(t, ok, "built with camera3d + transform3d")
+	testing.expect(t, cam.position == (rl.Vector3{1, 2, 3}), "position from transform")
+	testing.expect(t, cam.target == (rl.Vector3{4, 5, 6}), "target from camera")
+	testing.expect(t, cam.fovy == 60, "fovy from camera")
+}
+
+@(test)
+build_camera_3d_zero_fields_default :: proc(t: ^testing.T) {
+	world: ecs.World
+	entity := ecs.spawn_entity(&world)
+	ecs.add_component(&world, entity, ecs.Transform3D{translation = {0, 0, 0}})
+	ecs.add_component(&world, entity, ecs.Camera3D{})
+
+	cam, ok := ecs.build_camera_3d(&world)
+	testing.expect(t, ok, "built")
+	testing.expect(t, cam.target == (rl.Vector3{0, 0, 1}), "zero target -> one unit forward")
+	testing.expect(t, cam.up == (rl.Vector3{0, 1, 0}), "zero up -> {0,1,0}")
+	testing.expect(t, cam.fovy == 45, "zero fovy -> 45")
+}
+
+@(test)
+camera3d_plugin_registers_begin_end :: proc(t: ^testing.T) {
+	app: ecs.App
+	ecs.DefaultPlugin(&app)
+	ecs.Camera3DPlugin(&app)
+	testing.expect(t, len(ecs.get_system(&app, "draw", "camera_3d_begin")) == 1, "camera_3d_begin registered")
+	testing.expect(t, len(ecs.get_system(&app, "draw", "camera_3d_end")) == 1, "camera_3d_end registered")
+}
+
 @(test)
 camera_absent_writes_screen_space :: proc(t: ^testing.T) {
 	// registration shape only: no camera component means the camera_begin set
