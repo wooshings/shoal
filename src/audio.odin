@@ -24,18 +24,18 @@ AudioPlugin :: proc(app: ^App) {
 // from the compressed file (no fully-decoded PCM sitting in RAM) and the
 // plugin's "update" system keeps each playing stream fed. assets are cached
 // by path — the path IS the handle; first call loads from disk, every call
-// after replays the loaded asset
-@(private)
+// after replays the loaded asset. public so callers can see what is loaded
+// (and so the lifecycle test can assert cache hits)
 streams: map[string]rl.Music
 
-@(private)
+// open the audio device. registered into the "audio_init" set at startup;
+// public so the lifecycle test can drive it without a full schedule walk
 startup :: proc() {
 	rl.InitAudioDevice()
 }
 
 // fill every playing stream's buffers once per frame. a stream nobody
-// updates goes silent
-@(private)
+// updates goes silent. public so the lifecycle test can pump by hand
 pump_streams :: proc() {
 	for _, m in streams {
 		if rl.IsMusicStreamPlaying(m) {
@@ -44,7 +44,8 @@ pump_streams :: proc() {
 	}
 }
 
-@(private)
+// stop and unload every cached stream, then close the device. public so the
+// lifecycle test can drive it without a full schedule walk
 shutdown :: proc() {
 	for _, m in streams {
 		rl.StopMusicStream(m)

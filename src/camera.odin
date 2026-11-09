@@ -48,8 +48,9 @@ camera_2d_on: bool
 // becomes the roll around that point; that's why a camera entity needs a
 // TransformComponent — like every sprite entity, a missing one is a fail-fast
 // panic. zoom of zero falls back to 1, the same zero-means-default rule as
-// SpriteComponent's tint
-@(private)
+// SpriteComponent's tint. public so callers can build the same camera the
+// plugin would use (and so the tests can check the pure build without a
+// window)
 build_camera_2d :: proc(world: ^World) -> (built: rl.Camera2D, ok: bool) {
 	cameras := slice(world, Camera)
 	if len(cameras) == 0 {

@@ -163,8 +163,9 @@ draw_sprite :: proc(world: ^World) {
 
 // textures are cached by path — the path is the handle, same rule as audio:
 // first call loads from disk, every call after returns the same texture. the
-// cache owns every texture and frees them all at "destroy"
-@(private)
+// cache owns every texture and frees them all at "destroy". public so
+// callers can see what is loaded (the path is the handle, so the map is the
+// list of handles)
 textures: map[string]rl.Texture
 
 // cache lookup or disk load. panics on a path that can't be loaded: raylib
@@ -185,8 +186,7 @@ get_texture :: proc(path: string) -> rl.Texture {
 }
 
 // free every cached texture. registered ahead of CloseWindow — UnloadTexture
-// needs the GL context alive
-@(private)
+// needs the GL context alive. public so callers can flush the cache themselves
 unload_textures :: proc() {
 	for _, t in textures {
 		rl.UnloadTexture(t)

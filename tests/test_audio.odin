@@ -1,13 +1,14 @@
-package shoal
+package tests
 
 // tests for the audio plugin. run with:
 //
-//	odin test src -collection:raylib=<odin vendor raylib path>
+//	odin test tests -collection:raylib=<odin vendor raylib path>
 //
 // the runner executes tests on multiple threads by default; the wiring test
 // is stateless, and the lifecycle test is the sole owner of the package-global
 // stream cache and the audio device
 
+import ecs "../src"
 import "core:math"
 import "core:os"
 import "core:testing"
@@ -16,25 +17,25 @@ import rl "vendor:raylib"
 
 @(test)
 default_plugin_wires_audio :: proc(t: ^testing.T) {
-	app: App
-	DefaultPlugin(&app)
+	app: ecs.App
+	ecs.DefaultPlugin(&app)
 	// DefaultPlugin queues AudioPlugin via add_plugin; run() executes queued
 	// plugins before startup — do that here so audio's systems register too
-	AudioPlugin(&app)
+	ecs.AudioPlugin(&app)
 	// audio's device init and the plugin's window init each live in their own
 	// set anchored ahead of "default" in the startup walk: main()'s
 	// registrations land in "default" before plugins run, so user startup
 	// systems that play sound or need the GPU must run after both are open
-	order := get_schedule_set_order(&app, "startup")
+	order := ecs.get_schedule_set_order(&app, "startup")
 	testing.expect(t, len(order) == 2 && order[0] == "audio_init" && order[1] == "window", "plugin-owned sets run before default at startup")
-	testing.expect(t, len(get_system(&app, "startup", "audio_init")) == 1, "audio device init in audio_init")
-	testing.expect(t, len(get_system(&app, "startup", "window")) == 1, "window init in window set")
-	testing.expect(t, len(get_system(&app, "startup", "default")) == 0, "startup default holds no plugin systems")
-	testing.expect(t, len(get_system(&app, "update", "default")) == 3, "timers + cursor + stream pump")
-	testing.expect(t, len(get_system(&app, "destroy", "default")) == 3, "texture unload + CloseWindow + audio shutdown")
+	testing.expect(t, len(ecs.get_system(&app, "startup", "audio_init")) == 1, "audio device init in audio_init")
+	testing.expect(t, len(ecs.get_system(&app, "startup", "window")) == 1, "window init in window set")
+	testing.expect(t, len(ecs.get_system(&app, "startup", "default")) == 0, "startup default holds no plugin systems")
+	testing.expect(t, len(ecs.get_system(&app, "update", "default")) == 3, "timers + cursor + stream pump")
+	testing.expect(t, len(ecs.get_system(&app, "destroy", "default")) == 3, "texture unload + CloseWindow + audio shutdown")
 	// the rest of the pipeline is untouched
-	testing.expect(t, len(get_system(&app, "update", "post_update")) == 1, "signal clear still in place")
-	testing.expect(t, len(get_schedule_set_order(&app, "draw")) == 3, "pre_draw/default/post_draw")
+	testing.expect(t, len(ecs.get_system(&app, "update", "post_update")) == 1, "signal clear still in place")
+	testing.expect(t, len(ecs.get_schedule_set_order(&app, "draw")) == 3, "pre_draw/default/post_draw")
 }
 
 // generate a tiny 16-bit mono PCM wav: a 440 Hz sine, `seconds` long
@@ -92,21 +93,21 @@ write_sine_wav :: proc(path: string, sample_rate: int, seconds: f32) -> bool {
 audio_lifecycle :: proc(t: ^testing.T) {
 	// --- no device yet: play calls must not touch disk, control procs must
 	// not crash on paths that were never loaded ---
-	play_sound(".never_loaded.wav")
-	set_volume(".never_loaded.wav", 0.5)
-	stop(".never_loaded.ogg")
-	pause(".never_loaded.ogg")
-	resume(".never_loaded.ogg")
-	master_volume(0.5)
-	testing.expect(t, len(streams) == 0, "nothing cached without a device")
+	ecs.play_sound(".never_loaded.wav")
+	ecs.set_volume(".never_loaded.wav", 0.5)
+	ecs.stop(".never_loaded.ogg")
+	ecs.pause(".never_loaded.ogg")
+	ecs.resume(".never_loaded.ogg")
+	ecs.master_volume(0.5)
+	testing.expect(t, len(ecs.streams) == 0, "nothing cached without a device")
 
 	// --- real device round trip ---
-	startup()
+	ecs.startup()
 	if !rl.IsAudioDeviceReady() {
 		return // headless box: nothing further to integration-test
 	}
-	defer shutdown()
-	master_volume(0.0) // the test must be silent
+	defer ecs.shutdown()
+	ecs.master_volume(0.0) // the test must be silent
 
 	path := ".test_sine.wav"
 	if !write_sine_wav(path, 8000, 0.1) {
@@ -116,31 +117,31 @@ audio_lifecycle :: proc(t: ^testing.T) {
 	defer os.remove(path)
 
 	// first call loads and caches, second replays the same asset
-	play_sound(path)
-	m, ok := streams[path]
+	ecs.play_sound(path)
+	m, ok := ecs.streams[path]
 	testing.expect(t, ok, "stream cached by path")
 	testing.expect(t, rl.IsMusicStreamPlaying(m), "playing after play_sound")
-	play_sound(path)
-	testing.expect(t, len(streams) == 1, "replay hits the cache, no reload")
-	pump_streams()
+	ecs.play_sound(path)
+	testing.expect(t, len(ecs.streams) == 1, "replay hits the cache, no reload")
+	ecs.pump_streams()
 	testing.expect(t, rl.IsMusicStreamPlaying(m), "still playing after one pump")
-	stop(path)
+	ecs.stop(path)
 	testing.expect(t, !rl.IsMusicStreamPlaying(m), "stopped by stop")
 
 	// pause / resume
-	play_sound(path)
-	pause(path)
+	ecs.play_sound(path)
+	ecs.pause(path)
 	testing.expect(t, !rl.IsMusicStreamPlaying(m), "paused")
-	resume(path)
+	ecs.resume(path)
 	testing.expect(t, rl.IsMusicStreamPlaying(m), "resumed")
-	stop(path)
+	ecs.stop(path)
 
 	// a finished non-looping stream ends on its own: pump at frame pace until
 	// the 0.1s track runs out, then the pump must leave it alone
-	play_sound(path, false)
+	ecs.play_sound(path, false)
 	finished := false
 	for i := 0; i < 120; i += 1 {
-		pump_streams()
+		ecs.pump_streams()
 		if !rl.IsMusicStreamPlaying(m) {
 			finished = true
 			break
@@ -150,16 +151,16 @@ audio_lifecycle :: proc(t: ^testing.T) {
 	testing.expect(t, finished, "non-looping stream reports not playing after its length ran out")
 
 	// a looping stream survives past its length (0.1s track, ~20 frames)
-	play_sound(path, true)
+	ecs.play_sound(path, true)
 	for i := 0; i < 20; i += 1 {
-		pump_streams()
+		ecs.pump_streams()
 		time.sleep(16 * time.Millisecond)
 	}
 	testing.expect(t, rl.IsMusicStreamPlaying(m), "looping stream still playing past its length")
-	stop(path)
+	ecs.stop(path)
 
 	// volume lands on the loaded asset without crashing
-	set_volume(path, 0.5)
+	ecs.set_volume(path, 0.5)
 
-	// deferred shutdown() unloads the cache and closes the device
+	// the deferred ecs.shutdown() unloads the cache and closes the device
 }
