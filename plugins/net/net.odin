@@ -24,6 +24,23 @@ configure :: proc(cfg: Config) {
 is_server :: proc() -> bool { return config.role == .Server }
 is_client :: proc() -> bool { return config.role == .Client }
 
+client_id :: proc() -> u32 { return my_client_id }
+
+// the replicated entity owned by this client (if any): the entity whose
+// Networked.owner matches this client's id. returns (entity, true) on a
+// client that has spawned/owns one, (0, false) otherwise. on a server this
+// always returns (0, false)
+owned_entity :: proc(world: ^ecs.World) -> (ecs.Entity, bool) {
+	if config.role != .Client { return 0, false }
+	ents := ecs.slice_entity(world, Networked)
+	for i in 0 ..< len(ents) {
+		if ecs.slice(world, Networked)[i].owner == my_client_id && my_client_id != 0 {
+			return ents[i], true
+		}
+	}
+	return 0, false
+}
+
 // ---- component (lives in the plugin, not in src/) ------------------------
 
 // marks an entity as replicated over the network. the net plugin syncs all
@@ -168,7 +185,7 @@ client_ids: map[netlib.Endpoint]u32
 next_client_id: u32 = 1
 
 @(private)
-client_id: u32
+my_client_id: u32
 
 @(private)
 next_net_id: u32 = 1
@@ -192,6 +209,7 @@ tick_counter: int
 PACKET_SNAPSHOT :: u8(1)
 PACKET_INPUT    :: u8(2)
 PACKET_SIGNAL   :: u8(4)
+PACKET_WELCOME  :: u8(5)
 
 // ---- helpers ------------------------------------------------------------
 
@@ -272,6 +290,11 @@ server_update :: proc(world: ^ecs.World) {
 			client_ids[from] = cid
 			ecs.write(ClientConnected{id = cid})
 			fmt.println("net: client connected, id", cid)
+			wbuf: [dynamic]u8
+			append(&wbuf, PACKET_WELCOME)
+			write_u32(&wbuf, cid)
+			netlib.send_udp(socket, wbuf[:], from)
+			delete(wbuf)
 		}
 		if len(data) > 0 && data[0] == 3 { // disconnect
 			if cid, ok := client_ids[from]; ok {
@@ -285,6 +308,15 @@ server_update :: proc(world: ^ecs.World) {
 				}
 				fmt.println("net: client disconnected, id", cid)
 			}
+		} else if len(data) > 0 && data[0] == PACKET_WELCOME {
+			off := 1
+			cid := read_u32(data, &off)
+			my_client_id = cid
+			if !connected {
+				connected = true
+				ecs.write(ClientConnected{id = my_client_id})
+			}
+			fmt.println("net: welcome, client id", my_client_id)
 		} else if len(data) > 0 && data[0] == PACKET_SIGNAL {
 			off := 1
 			count := read_u32(data, &off)
@@ -409,7 +441,7 @@ client_init :: proc() {
 	server_endpoint = ep
 	fmt.println("net: client targeting", config.host, config.port)
 	connected = false
-	client_id = 1
+	my_client_id = 1
 }
 
 @(private)
@@ -434,9 +466,6 @@ client_update :: proc(world: ^ecs.World) {
 				off += int(dlen)
 			}
 		} else if len(data) > 0 && data[0] == PACKET_SNAPSHOT {
-			if !connected {
-				ecs.write(ClientConnected{id = client_id})
-			}
 			connected = true
 			off := 1
 			count := read_u32(data, &off)
@@ -485,15 +514,15 @@ client_update :: proc(world: ^ecs.World) {
 	// spawn request if we don't own an entity yet
 	has_owned := false
 	for i in 0 ..< len(ecs.slice(world, Networked)) {
-		if ecs.slice(world, Networked)[i].owner == client_id && client_id != 0 {
+		if ecs.slice(world, Networked)[i].owner == my_client_id && my_client_id != 0 {
 			has_owned = true
 		}
 	}
-	if !has_owned && client_id != 0 {
+	if !has_owned && my_client_id != 0 {
 		buf0: [dynamic]u8
 		append(&buf0, PACKET_INPUT)
 		write_u32(&buf0, 0)
-		write_u32(&buf0, client_id)
+		write_u32(&buf0, my_client_id)
 		write_f32(&buf0, 400)
 		write_f32(&buf0, 400)
 		write_f32(&buf0, 0)
@@ -504,7 +533,7 @@ client_update :: proc(world: ^ecs.World) {
 	// send own player transform
 	for i in 0 ..< len(ecs.slice(world, Networked)) {
 		n := ecs.slice(world, Networked)[i]
-		if n.owner == client_id && client_id != 0 {
+		if n.owner == my_client_id && my_client_id != 0 {
 			ent := ecs.slice_entity(world, Networked)[i]
 			t, ok := ecs.try_get_component(world, ent, ecs.Transform)
 			if !ok { continue }
