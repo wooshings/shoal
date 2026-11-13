@@ -65,6 +65,17 @@ cell :: struct {
 	bold:  bool,
 }
 
+// persistent frame buffers for differential rendering: only changed cells
+// are ever written to the terminal, so idle frames cost zero bytes over ssh
+@(private)
+rt_grid:    []cell
+@(private)
+rt_prev:    []cell
+@(private)
+rt_w, rt_h: int
+@(private)
+rt_started: bool
+
 @(private)
 startup_terminal :: proc() {
 	terminal_enable_raw_mode()
@@ -92,8 +103,17 @@ render_terminal :: proc(world: ^ecs.World) {
 		}
 	}
 
-	grid := make([]cell, width * height)
-	defer delete(grid)
+	// (re)allocate the persistent frame buffers on terminal resize
+	if rt_w != width || rt_h != height || len(rt_grid) != width*height {
+		if len(rt_grid) > 0 {
+			delete(rt_grid)
+			delete(rt_prev)
+		}
+		rt_w, rt_h = width, height
+		rt_grid = make([]cell, width*height)
+		rt_prev = make([]cell, width*height)
+	}
+	grid := rt_grid
 	for i in 0 ..< len(grid) {
 		grid[i] = cell{glyph = ' ', fg = .White, bg = .Black, bold = false}
 	}
@@ -174,19 +194,54 @@ render_terminal :: proc(world: ^ecs.World) {
 
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
-	strings.write_string(&b, "\x1b[H")
+
+	// first frame (or after a resize): clear and repaint everything
+	full_paint := !rt_started
+	if full_paint {
+		strings.write_string(&b, "\x1b[2J\x1b[H")
+		rt_started = true
+	}
+
+	// differential emission: track SGR state + cursor position so consecutive
+	// changed cells share one escape sequence
+	cur_fg, cur_bg: TermColor = .White, .Black
+	cur_bold: bool   = false
+	sgr_valid: bool  = false
+	cx, cy: int      = -1, -1
+	any: bool        = false
+
 	for y in 0 ..< height {
 		for x in 0 ..< width {
-			c := grid[y * width + x]
-			if c.bold {
-				fmt.sbprintf(&b, "\x1b[1;%d;%dm%c", fg_code(c.fg), bg_code(c.bg), c.glyph)
-			} else {
-				fmt.sbprintf(&b, "\x1b[%d;%dm%c", fg_code(c.fg), bg_code(c.bg), c.glyph)
+			i := y*width + x
+			c := grid[i]
+			p := rt_prev[i]
+			if c == p { continue }
+			rt_prev[i] = c
+			// plain blanks need no paint on a full repaint (screen already dark)
+			if full_paint && c.glyph == ' ' && c.fg == .White && c.bg == .Black && !c.bold {
+				continue
 			}
+			if x != cx || y != cy {
+				fmt.sbprintf(&b, "\x1b[%d;%dH", y+1, x+1)
+			}
+			if !sgr_valid || c.bold != cur_bold || c.fg != cur_fg || c.bg != cur_bg {
+				if c.bold {
+					fmt.sbprintf(&b, "\x1b[0;1;%d;%dm", fg_code(c.fg), bg_code(c.bg))
+				} else {
+					fmt.sbprintf(&b, "\x1b[0;%d;%dm", fg_code(c.fg), bg_code(c.bg))
+				}
+				cur_fg, cur_bg, cur_bold, sgr_valid = c.fg, c.bg, c.bold, true
+			}
+			strings.write_rune(&b, c.glyph)
+			cx, cy = x+1, y
+			any = true
 		}
-		strings.write_string(&b, "\x1b[0m\n")
 	}
-	fmt.print(strings.to_string(b))
+
+	// idle frame with no changes: emit nothing at all
+	if any {
+		fmt.print(strings.to_string(b))
+	}
 }
 
 TerminalPlugin :: proc(app: ^ecs.App) {
