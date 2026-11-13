@@ -9,9 +9,14 @@ import term "../plugins/terminal"
 
 // ---- map -----------------------------------------------------------------
 
-MAP_W :: 80
-MAP_H :: 24
-MAX_ROWS :: 120 // row pool: enough rows to draw the map scaled to a tall terminal
+// the dungeon is sized to the terminal window at generation time (R
+// regenerates at the current size), clamped to these bounds. cells stay
+// 1:1 so nothing jitters or drifts
+MAP_MIN_W :: 40
+MAP_MIN_H :: 12
+MAP_MAX_W :: 160
+MAP_MAX_H :: 60
+MAX_ROWS :: MAP_MAX_H // row-entity pool: one per possible map row
 MAX_MONSTERS :: 40
 MAX_ITEMS :: 40
 
@@ -30,8 +35,9 @@ tile_char :: proc(t: Tile) -> rune {
 
 Rect :: struct { x, y, w, h: int }
 
-dungeon: [MAP_H][MAP_W]Tile
-row_text: [MAP_H]string
+map_w, map_h: int
+dungeon:      [MAP_MAX_H][MAP_MAX_W]Tile
+row_text:     [MAP_MAX_H]string
 
 // ---- game state ----------------------------------------------------------
 
@@ -73,15 +79,6 @@ player_entity: ecs.Entity
 monster_entities: [MAX_MONSTERS]ecs.Entity
 item_entities: [MAX_ITEMS]ecs.Entity
 row_entities: [MAX_ROWS]ecs.Entity
-
-// scaled-view cache: the zoomed row strings, rebuilt only when the terminal
-// size (or the level) changes
-scaled_text:  [MAX_ROWS]string
-scaled_y:     [MAX_ROWS]int
-scaled_z:     f32
-scaled_tw:    int
-scaled_th:    int
-scaled_valid: bool
 
 game_over: bool
 
@@ -129,9 +126,15 @@ monster_name :: proc(symbol: rune) -> string {
 // ---- level generation ---------------------------------------------------
 
 generate_level :: proc(depth: int) {
+	// size the dungeon to the current terminal window (clamped): the map
+	// then fills the window 1:1 with no scaling artifacts
+	tw, th := term.terminal_size()
+	map_w = clamp(tw, MAP_MIN_W, MAP_MAX_W)
+	map_h = clamp(th, MAP_MIN_H, MAP_MAX_H)
+
 	// reset
-	for y in 0 ..< MAP_H {
-		for x in 0 ..< MAP_W {
+	for y in 0 ..< map_h {
+		for x in 0 ..< map_w {
 			dungeon[y][x] = .Wall
 		}
 	}
@@ -140,16 +143,18 @@ generate_level :: proc(depth: int) {
 	player.alive = true
 	game_over = false
 	last_msg = ""
-	scaled_valid = false // the zoomed rows are built from the old level
 
 	rooms := [dynamic]Rect{}
 	defer delete(rooms)
 
-	for len(rooms) < 8 {
-		w := rr(6) + 4
-		h := rr(4) + 3
-		x := rr(MAP_W - w - 2) + 1
-		y := rr(MAP_H - h - 2) + 1
+	target_rooms := 8 + map_w / 40
+	attempts := 0
+	for len(rooms) < target_rooms && attempts < 300 {
+		attempts += 1
+		w := min(rr(6) + 4, map_w - 4)
+		h := min(rr(4) + 3, map_h - 4)
+		x := rr(map_w - w - 2) + 1
+		y := rr(map_h - h - 2) + 1
 		ok := true
 		for r in rooms {
 			if x-1 <= r.x+r.w && x+w+1 >= r.x && y-1 <= r.y+r.h && y+h+1 >= r.y {
@@ -208,8 +213,8 @@ generate_level :: proc(depth: int) {
 	// monsters + items in other rooms
 	for ri in 1 ..< len(rooms) {
 		r := rooms[ri]
-		// monsters
-		nm := rr(3) + 1
+		// monsters (denser on bigger maps)
+		nm := rr(3) + 1 + map_w / 40
 		for m in 0 ..< nm {
 			if monster_count >= MAX_MONSTERS { break }
 			mx := r.x + rr(r.w)
@@ -251,7 +256,7 @@ generate_level :: proc(depth: int) {
 			monster_count += 1
 		}
 		// items
-		ni := rr(3)
+		ni := rr(3) + map_w / 80
 		for it in 0 ..< ni {
 			if item_count >= MAX_ITEMS { break }
 			ix := r.x + rr(r.w)
@@ -265,9 +270,9 @@ generate_level :: proc(depth: int) {
 	}
 
 	// build row text
-	for y in 0 ..< MAP_H {
+	for y in 0 ..< map_h {
 		b := strings.builder_make()
-		for x in 0 ..< MAP_W {
+		for x in 0 ..< map_w {
 			strings.write_rune(&b, tile_char(dungeon[y][x]))
 		}
 		row_text[y] = strings.to_string(b)
@@ -318,7 +323,7 @@ try_move_player :: proc(dx, dy: int) {
 	if game_over { return }
 	nx := player.x + dx
 	ny := player.y + dy
-	if nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H { return }
+	if nx < 0 || ny < 0 || nx >= map_w || ny >= map_h { return }
 	if dungeon[ny][nx] == .Wall { return }
 	mi := monster_at(nx, ny)
 	if mi >= 0 {
@@ -388,7 +393,7 @@ move_monsters :: proc() {
 		// try x then y
 		nx := m.x + dx
 		ny := m.y
-		if dx != 0 && nx >= 0 && ny >= 0 && nx < MAP_W && ny < MAP_H && dungeon[ny][nx] != .Wall {
+		if dx != 0 && nx >= 0 && ny >= 0 && nx < map_w && ny < map_h && dungeon[ny][nx] != .Wall {
 			if monster_at(nx, ny) < 0 && !(nx == player.x && ny == player.y) {
 				m.x = nx
 				continue
@@ -396,7 +401,7 @@ move_monsters :: proc() {
 		}
 		nx = m.x
 		ny = m.y + dy
-		if dy != 0 && nx >= 0 && ny >= 0 && nx < MAP_W && ny < MAP_H && dungeon[ny][nx] != .Wall {
+		if dy != 0 && nx >= 0 && ny >= 0 && nx < map_w && ny < map_h && dungeon[ny][nx] != .Wall {
 			if monster_at(nx, ny) < 0 && !(nx == player.x && ny == player.y) {
 				m.y = ny
 			}
@@ -406,14 +411,23 @@ move_monsters :: proc() {
 
 // ---- sync render ---------------------------------------------------------
 
-// screen cell at the center of a world tile's zoomed block
-tile_to_screen :: proc(wx, wy, z: f32, tw, th: int) -> (int, int) {
-	return int((wx + 0.5 - f32(MAP_W) / 2) * z + f32(tw) / 2),
-	       int((wy + 0.5 - f32(MAP_H) / 2) * z + f32(th) / 2)
-}
-
 sync_render :: proc(world: ^ecs.World) {
 	tw, th := term.terminal_size()
+
+	// map rows (one pool entity per row; extra rows parked offscreen)
+	for y in 0 ..< MAX_ROWS {
+		rc := ecs.get_component(world, row_entities[y], term.Character)
+		if y < map_h {
+			rc.text = row_text[y]
+			rc.x = 0
+			rc.y = y
+			rc.fg = .White
+		} else {
+			rc.text = ""
+			rc.x = -1
+			rc.y = -1
+		}
+	}
 	// player
 	pc := ecs.get_component(world, player_entity, term.Character)
 	pc.glyph = '@'
@@ -457,96 +471,17 @@ sync_render :: proc(world: ^ecs.World) {
 			ic.y = -1
 		}
 	}
-	// view: the map is a fixed MAP_W x MAP_H grid; scale it to fill the
-	// terminal by turning every tile into a zoom-sized block of cells
+	// view: cells are 1:1. center the map when it fits the window, follow
+	// the player when the window is smaller
 	cams := ecs.slice(world, term.TerminalCamera)
 	if len(cams) > 0 {
-		if tw < MAP_W || th < MAP_H {
-			// terminal smaller than the map: 1:1, camera follows the player
-			scaled_valid = false
+		cams[0].zoom = 1
+		if map_w <= tw && map_h <= th {
+			cams[0].x = f32(map_w) / 2
+			cams[0].y = f32(map_h) / 2
+		} else {
 			cams[0].x = f32(player.x)
 			cams[0].y = f32(player.y)
-			cams[0].zoom = 1
-			for y in 0 ..< MAX_ROWS {
-				rc := ecs.get_component(world, row_entities[y], term.Character)
-				if y < MAP_H {
-					rc.text = row_text[y]
-					rc.x = 0
-					rc.y = y
-					rc.fg = .White
-				} else {
-					rc.text = ""
-					rc.x = -1
-					rc.y = -1
-				}
-			}
-		} else {
-			z := min(f32(tw) / f32(MAP_W), f32(th) / f32(MAP_H))
-			z = min(z, f32(MAX_ROWS) / f32(MAP_H)) // row pool covers the height
-			// identity camera: coords written below are already screen coords
-			cams[0].x = f32(tw) / 2
-			cams[0].y = f32(th) / 2
-			cams[0].zoom = 1
-
-			// rebuild the zoomed rows only when the view (or level) changes
-			if !scaled_valid || scaled_z != z || scaled_tw != tw || scaled_th != th {
-				scaled_z, scaled_tw, scaled_th = z, tw, th
-				scaled_valid = true
-				for i in 0 ..< MAX_ROWS {
-					if len(scaled_text[i]) > 0 {
-						delete(scaled_text[i])
-						scaled_text[i] = ""
-					}
-					scaled_y[i] = -1
-				}
-				n := 0
-				for y in 0 ..< MAP_H {
-					sy0 := int((f32(y) - f32(MAP_H) / 2) * z + f32(th) / 2)
-					sy1 := int((f32(y + 1) - f32(MAP_H) / 2) * z + f32(th) / 2)
-					for sy in sy0 ..< sy1 {
-						if n >= MAX_ROWS { break }
-						b := strings.builder_make()
-						for x in 0 ..< MAP_W {
-							c := tile_char(dungeon[y][x])
-							sx0 := int((f32(x) - f32(MAP_W) / 2) * z + f32(tw) / 2)
-							sx1 := int((f32(x + 1) - f32(MAP_W) / 2) * z + f32(tw) / 2)
-							for k in 0 ..< max(sx1 - sx0, 0) {
-								strings.write_rune(&b, c)
-							}
-						}
-						scaled_text[n] = strings.to_string(b)
-						scaled_y[n] = sy
-						n += 1
-					}
-				}
-			}
-			for i in 0 ..< MAX_ROWS {
-				rc := ecs.get_component(world, row_entities[i], term.Character)
-				if scaled_text[i] != "" {
-					rc.text = scaled_text[i]
-					rc.x = 0
-					rc.y = scaled_y[i]
-					rc.fg = .White
-				} else {
-					rc.text = ""
-					rc.x = -1
-					rc.y = -1
-				}
-			}
-			// entities sit at the center of their tile's zoomed block
-			pc.x, pc.y = tile_to_screen(f32(player.x), f32(player.y), z, tw, th)
-			for i in 0 ..< MAX_MONSTERS {
-				if i < monster_count && monsters[i].alive {
-					mc := ecs.get_component(world, monster_entities[i], term.Character)
-					mc.x, mc.y = tile_to_screen(f32(monsters[i].x), f32(monsters[i].y), z, tw, th)
-				}
-			}
-			for i in 0 ..< MAX_ITEMS {
-				if i < item_count && items[i].active {
-					ic := ecs.get_component(world, item_entities[i], term.Character)
-					ic.x, ic.y = tile_to_screen(f32(items[i].x), f32(items[i].y), z, tw, th)
-				}
-			}
 		}
 	}
 
