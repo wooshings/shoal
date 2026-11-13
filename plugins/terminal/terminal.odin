@@ -37,6 +37,7 @@ Character :: struct {
 	bg:     TermColor,
 	color:  TermColor,
 	bold:   bool,
+	solid:  bool,
 }
 
 // the terminal screen dimensions.
@@ -56,3 +57,9 @@ TerminalCamera :: struct {
 }
 
 // raw-mode terminal input state is handled in input.odin.
+
+
+// re-export the generic collider under the terminal namespace
+Collider :: ecs.Collider
+Collision :: ecs.Collision
+Solid :: ecs.Solid

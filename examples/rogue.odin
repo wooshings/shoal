@@ -20,7 +20,7 @@ tile_char :: proc(t: Tile) -> rune {
 	switch t {
 	case .Wall:     return '#'
 	case .Floor:    return '.'
-	case .Corridor: return '#'
+	case .Corridor: return '.'
 	case .Door:     return '+'
 	case .Stairs:   return '>'
 	}

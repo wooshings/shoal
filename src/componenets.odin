@@ -131,3 +131,15 @@ model :: proc(m: rl.Model, tint := rl.WHITE) -> Model {
 // internally, keyed by the component's typeid and created on first add (see
 // get_storage in entities.odin), so there's nothing to declare next to a
 // component
+// a generic collision volume. `solid` marks it as impassable; size is in
+// world units (cells for the terminal plugin). systems that move entities
+// should consult colliders before committing a new position
+Collider :: struct {
+	solid:  bool,
+	width:  int,
+	height: int,
+}
+
+// alias for the collision component
+Collision :: Collider
+Solid :: Collider
