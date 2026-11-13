@@ -157,6 +157,21 @@ render_terminal :: proc(world: ^ecs.World) {
 		}
 	}
 
+	// stamp immediate-mode UI items on top
+	for &it in ui_items {
+		cx := it.x
+		for r in it.text {
+			if cx >= 0 && cx < width && it.y >= 0 && it.y < height {
+				idx := it.y * width + cx
+				grid[idx].glyph = r
+				grid[idx].fg = it.fg
+				grid[idx].bg = it.bg
+				grid[idx].bold = it.bold
+			}
+			cx += 1
+		}
+	}
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 	strings.write_string(&b, "\x1b[H")
