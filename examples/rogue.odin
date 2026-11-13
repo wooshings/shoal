@@ -76,6 +76,10 @@ status_entity: ecs.Entity
 
 game_over: bool
 
+// combat bookkeeping
+turn_count: int
+last_msg:   string
+
 // ---- helpers ------------------------------------------------------------
 
 rng_seeded: bool
@@ -95,6 +99,24 @@ sign :: proc(v: int) -> int {
 	return 0
 }
 
+// damage roll: 25% chance to miss, otherwise atk-def with 0..2 variance
+roll_damage :: proc(atk, def: int) -> int {
+	if rr(4) == 0 { return 0 }
+	base := atk - def
+	if base < 1 { base = 1 }
+	return base + rr(3)
+}
+
+monster_name :: proc(symbol: rune) -> string {
+	switch symbol {
+	case 'r': return "rat"
+	case 'g': return "goblin"
+	case 'o': return "orc"
+	case 'T': return "troll"
+	}
+	return "monster"
+}
+
 // ---- level generation ---------------------------------------------------
 
 generate_level :: proc(depth: int) {
@@ -108,6 +130,7 @@ generate_level :: proc(depth: int) {
 	item_count = 0
 	player.alive = true
 	game_over = false
+	last_msg = ""
 
 	rooms := [dynamic]Rect{}
 	defer delete(rooms)
@@ -183,7 +206,11 @@ generate_level :: proc(depth: int) {
 			my := r.y + rr(r.h)
 			if mx == player.x && my == player.y { continue }
 			if dungeon[my][mx] != .Floor { continue }
-			kind := MonsterKind(rr(4))
+			// deeper levels spawn tougher monsters
+			max_kind := 2
+			if depth >= 2 { max_kind = 3 }
+			if depth >= 3 { max_kind = 4 }
+			kind := MonsterKind(rr(max_kind))
 			mon: Monster
 			mon.x = mx
 			mon.y = my
@@ -263,12 +290,16 @@ pickup_item :: proc(idx: int) {
 	case .Potion:
 		player.hp += 20
 		if player.hp > player.maxhp { player.hp = player.maxhp }
+		last_msg = "you quaff a potion"
 	case .Weapon:
 		player.atk += 2
+		last_msg = "you found a weapon (+2 atk)"
 	case .Armor:
 		player.def += 1
+		last_msg = "you found armor (+1 def)"
 	case .Gold:
 		player.gold += 10
+		last_msg = "you picked up gold"
 	}
 	it.active = false
 }
@@ -281,22 +312,19 @@ try_move_player :: proc(dx, dy: int) {
 	if dungeon[ny][nx] == .Wall { return }
 	mi := monster_at(nx, ny)
 	if mi >= 0 {
-		// attack
-		dmg := player.atk - monsters[mi].def
-		if dmg < 1 { dmg = 1 }
-		monsters[mi].hp -= dmg
-		if monsters[mi].hp <= 0 {
-			monsters[mi].alive = false
-		}
-		// monster counterattacks if survives
-		if monsters[mi].alive {
-			mdmg := monsters[mi].atk - player.def
-			if mdmg < 1 { mdmg = 1 }
-			player.hp -= mdmg
-			if player.hp <= 0 {
-				player.hp = 0
-				player.alive = false
-				game_over = true
+		// player attacks (no guaranteed counterattack — the monster only
+		// swings on its own move, and it moves at half player speed)
+		dmg := roll_damage(player.atk, monsters[mi].def)
+		name := monster_name(monsters[mi].symbol)
+		if dmg == 0 {
+			last_msg = fmt.tprintf("you miss the %s", name)
+		} else {
+			monsters[mi].hp -= dmg
+			if monsters[mi].hp <= 0 {
+				monsters[mi].alive = false
+				last_msg = fmt.tprintf("you kill the %s!", name)
+			} else {
+				last_msg = fmt.tprintf("you hit the %s for %d", name, dmg)
 			}
 		}
 		return
@@ -311,24 +339,35 @@ try_move_player :: proc(dx, dy: int) {
 	// stairs
 	if dungeon[ny][nx] == .Stairs {
 		generate_level(player.depth + 1)
+		last_msg = fmt.tprintf("you descend to depth %d", player.depth)
 	}
 }
 
 move_monsters :: proc() {
 	if game_over { return }
+	turn_count += 1
+	// monsters are slower than the player: they act every other turn
+	if turn_count % 2 == 0 { return }
 	for i in 0 ..< monster_count {
 		if !monsters[i].alive { continue }
 		m := &monsters[i]
 		// adjacent attack?
 		if abs(m.x-player.x) <= 1 && abs(m.y-player.y) <= 1 {
 			if !(m.x == player.x && m.y == player.y) {
-				mdmg := m.atk - player.def
-				if mdmg < 1 { mdmg = 1 }
-				player.hp -= mdmg
-				if player.hp <= 0 {
-					player.hp = 0
-					player.alive = false
-					game_over = true
+				name := monster_name(m.symbol)
+				mdmg := roll_damage(m.atk, player.def)
+				if mdmg == 0 {
+					last_msg = fmt.tprintf("the %s misses you", name)
+				} else {
+					player.hp -= mdmg
+					if player.hp <= 0 {
+						player.hp = 0
+						player.alive = false
+						game_over = true
+						last_msg = "you die..."
+					} else {
+						last_msg = fmt.tprintf("the %s hits you for %d", name, mdmg)
+					}
 				}
 				continue
 			}
@@ -434,6 +473,9 @@ sync_render :: proc(world: ^ecs.World) {
 		term.ui_fill(0, 0, len(hp)+len(stats), .BrightBlack)
 		term.ui_label(0, 0, hp, .BrightWhite, .Red)
 		term.ui_label(len(hp), 0, stats, .Black, .BrightYellow)
+	}
+	if last_msg != "" {
+		term.ui_label(0, 1, fmt.tprintf(" %s ", last_msg), .Black, .BrightCyan)
 	}
 }
 
