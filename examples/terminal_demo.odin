@@ -31,9 +31,9 @@ main :: proc() {
 	// movement + mouse interaction + quit
 	ecs.add_system(&app, "update", proc(world: ^ecs.World) {
 		term.ui_begin()
-		if term.ui_button("btn1", 2, 2, "Click me") {
+		if term.ui_button("btn1", 2, 2, "Click me", .Black, .Yellow) {
 		}
-		term.ui_label(2, 4, "Mouse here", .Cyan)
+		term.ui_label(2, 4, "Mouse here", .BrightGreen)
 		ents := ecs.slice_entity(world, term.Character)
 		comps := ecs.slice(world, term.Character)
 		// find player (first '@'? just use entity 0)

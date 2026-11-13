@@ -37,7 +37,7 @@ ui_label :: proc(x, y: int, text: string, fg: TermColor = .White) {
 }
 
 // draw a button; returns true on the frame it is clicked.
-ui_button :: proc(id: string, x, y: int, label: string, fg: TermColor = .Black, bg: TermColor = .White) -> bool {
+ui_button :: proc(id: string, x, y: int, label: string, fg: TermColor = .White, bg: TermColor = .Blue) -> bool {
 	text := fmt.tprintf("[%s]", label)
 	w := len(text)
 	append(&ui_items, UIItem{x = x, y = y, text = text, fg = fg, bg = bg, bold = true, is_button = true, id = id, w = w})
