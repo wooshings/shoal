@@ -11,6 +11,7 @@ import term "../plugins/terminal"
 
 MAP_W :: 80
 MAP_H :: 24
+MAX_ROWS :: 120 // row pool: enough rows to draw the map scaled to a tall terminal
 MAX_MONSTERS :: 40
 MAX_ITEMS :: 40
 
@@ -71,8 +72,16 @@ item_count: int
 player_entity: ecs.Entity
 monster_entities: [MAX_MONSTERS]ecs.Entity
 item_entities: [MAX_ITEMS]ecs.Entity
-row_entities: [MAP_H]ecs.Entity
-status_entity: ecs.Entity
+row_entities: [MAX_ROWS]ecs.Entity
+
+// scaled-view cache: the zoomed row strings, rebuilt only when the terminal
+// size (or the level) changes
+scaled_text:  [MAX_ROWS]string
+scaled_y:     [MAX_ROWS]int
+scaled_z:     f32
+scaled_tw:    int
+scaled_th:    int
+scaled_valid: bool
 
 game_over: bool
 
@@ -131,6 +140,7 @@ generate_level :: proc(depth: int) {
 	player.alive = true
 	game_over = false
 	last_msg = ""
+	scaled_valid = false // the zoomed rows are built from the old level
 
 	rooms := [dynamic]Rect{}
 	defer delete(rooms)
@@ -396,10 +406,14 @@ move_monsters :: proc() {
 
 // ---- sync render ---------------------------------------------------------
 
+// screen cell at the center of a world tile's zoomed block
+tile_to_screen :: proc(wx, wy, z: f32, tw, th: int) -> (int, int) {
+	return int((wx + 0.5 - f32(MAP_W) / 2) * z + f32(tw) / 2),
+	       int((wy + 0.5 - f32(MAP_H) / 2) * z + f32(th) / 2)
+}
+
 sync_render :: proc(world: ^ecs.World) {
-	for y in 0 ..< MAP_H {
-		ecs.get_component(world, row_entities[y], term.Character).text = row_text[y]
-	}
+	tw, th := term.terminal_size()
 	// player
 	pc := ecs.get_component(world, player_entity, term.Character)
 	pc.glyph = '@'
@@ -443,23 +457,97 @@ sync_render :: proc(world: ^ecs.World) {
 			ic.y = -1
 		}
 	}
-	// status
-	sc := ecs.get_component(world, status_entity, term.Character)
-	if game_over {
-		sc.text = fmt.tprintf("YOU DIED on depth %d. Press R to restart.", player.depth)
-	} else {
-		sc.text = "arrows/WASD move   R restart   Q quit"
-	}
-	sc.x = 0
-	sc.y = MAP_H
-	sc.fg = .Cyan
-	sc.bold = false
-
-	// camera follows player
+	// view: the map is a fixed MAP_W x MAP_H grid; scale it to fill the
+	// terminal by turning every tile into a zoom-sized block of cells
 	cams := ecs.slice(world, term.TerminalCamera)
 	if len(cams) > 0 {
-		cams[0].x = f32(player.x)
-		cams[0].y = f32(player.y)
+		if tw < MAP_W || th < MAP_H {
+			// terminal smaller than the map: 1:1, camera follows the player
+			scaled_valid = false
+			cams[0].x = f32(player.x)
+			cams[0].y = f32(player.y)
+			cams[0].zoom = 1
+			for y in 0 ..< MAX_ROWS {
+				rc := ecs.get_component(world, row_entities[y], term.Character)
+				if y < MAP_H {
+					rc.text = row_text[y]
+					rc.x = 0
+					rc.y = y
+					rc.fg = .White
+				} else {
+					rc.text = ""
+					rc.x = -1
+					rc.y = -1
+				}
+			}
+		} else {
+			z := min(f32(tw) / f32(MAP_W), f32(th) / f32(MAP_H))
+			z = min(z, f32(MAX_ROWS) / f32(MAP_H)) // row pool covers the height
+			// identity camera: coords written below are already screen coords
+			cams[0].x = f32(tw) / 2
+			cams[0].y = f32(th) / 2
+			cams[0].zoom = 1
+
+			// rebuild the zoomed rows only when the view (or level) changes
+			if !scaled_valid || scaled_z != z || scaled_tw != tw || scaled_th != th {
+				scaled_z, scaled_tw, scaled_th = z, tw, th
+				scaled_valid = true
+				for i in 0 ..< MAX_ROWS {
+					if len(scaled_text[i]) > 0 {
+						delete(scaled_text[i])
+						scaled_text[i] = ""
+					}
+					scaled_y[i] = -1
+				}
+				n := 0
+				for y in 0 ..< MAP_H {
+					sy0 := int((f32(y) - f32(MAP_H) / 2) * z + f32(th) / 2)
+					sy1 := int((f32(y + 1) - f32(MAP_H) / 2) * z + f32(th) / 2)
+					for sy in sy0 ..< sy1 {
+						if n >= MAX_ROWS { break }
+						b := strings.builder_make()
+						for x in 0 ..< MAP_W {
+							c := tile_char(dungeon[y][x])
+							sx0 := int((f32(x) - f32(MAP_W) / 2) * z + f32(tw) / 2)
+							sx1 := int((f32(x + 1) - f32(MAP_W) / 2) * z + f32(tw) / 2)
+							for k in 0 ..< max(sx1 - sx0, 0) {
+								strings.write_rune(&b, c)
+							}
+						}
+						scaled_text[n] = strings.to_string(b)
+						scaled_y[n] = sy
+						n += 1
+					}
+				}
+			}
+			for i in 0 ..< MAX_ROWS {
+				rc := ecs.get_component(world, row_entities[i], term.Character)
+				if scaled_text[i] != "" {
+					rc.text = scaled_text[i]
+					rc.x = 0
+					rc.y = scaled_y[i]
+					rc.fg = .White
+				} else {
+					rc.text = ""
+					rc.x = -1
+					rc.y = -1
+				}
+			}
+			// entities sit at the center of their tile's zoomed block
+			pc.x, pc.y = tile_to_screen(f32(player.x), f32(player.y), z, tw, th)
+			for i in 0 ..< MAX_MONSTERS {
+				if i < monster_count && monsters[i].alive {
+					mc := ecs.get_component(world, monster_entities[i], term.Character)
+					mc.x, mc.y = tile_to_screen(f32(monsters[i].x), f32(monsters[i].y), z, tw, th)
+				}
+			}
+			for i in 0 ..< MAX_ITEMS {
+				if i < item_count && items[i].active {
+					ic := ecs.get_component(world, item_entities[i], term.Character)
+					ic.x, ic.y = tile_to_screen(f32(items[i].x), f32(items[i].y), z, tw, th)
+				}
+			}
+		}
 	}
 
 	// immediate-mode UI overlay — screen-fixed, stamped on top of the game
@@ -477,6 +565,7 @@ sync_render :: proc(world: ^ecs.World) {
 	if last_msg != "" {
 		term.ui_label(0, 1, fmt.tprintf(" %s ", last_msg), .Black, .BrightCyan)
 	}
+	term.ui_label(0, th - 1, "arrows/WASD move   R restart   Q quit", .Cyan)
 }
 
 // ---- main ---------------------------------------------------------------
@@ -488,9 +577,9 @@ main :: proc() {
 
 	ecs.add_system(&app, "startup", proc(world: ^ecs.World) {
 		// row entities first (map layer)
-		for y in 0 ..< MAP_H {
+		for y in 0 ..< MAX_ROWS {
 			e := ecs.spawn_entity(world)
-			ecs.add_component(world, e, term.Character{text = "", x = 0, y = y, fg = .White})
+			ecs.add_component(world, e, term.Character{text = "", x = -1, y = -1, fg = .White})
 			row_entities[y] = e
 		}
 		// player
@@ -508,9 +597,6 @@ main :: proc() {
 			ecs.add_component(world, e, term.Character{glyph = ' ', x = -1, y = -1, fg = .Magenta})
 			item_entities[i] = e
 		}
-		// status line
-		status_entity = ecs.spawn_entity(world)
-		ecs.add_component(world, status_entity, term.Character{text = "", x = 0, y = MAP_H, fg = .Cyan})
 		// camera
 		cam := ecs.spawn_entity(world)
 		ecs.add_component(world, cam, term.TerminalCamera{x = 40, y = 12, zoom = 1})

@@ -3,30 +3,32 @@ package terminal
 import "core:fmt"
 import "core:strings"
 import ecs "../../src"
+import xs "core:sys/darwin"
 
 @(private)
-winsize :: struct {
-	ws_row:    u16,
-	ws_col:    u16,
-	ws_xpixel: u16,
-	ws_ypixel: u16,
+Winsize :: struct {
+	row: u16,
+	col: u16,
+	x:   u16,
+	y:   u16,
 }
-
-foreign import libc "system:c"
-
-foreign libc {
-	ioctl :: proc(fd: i32, request: u64, arg: rawptr) -> i32 ---
-}
-
-TIOCGWINSZ :: u64(0x40087468)
 
 @(private)
 terminal_get_size :: proc() -> (int, int) {
-	ws: winsize
-	if ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
-		return int(ws.ws_col), int(ws.ws_row)
+	ws: Winsize
+	if xs.syscall_ioctl(1, xs.TIOCGWINSZ, &ws) == 0 && ws.col > 0 && ws.row > 0 {
+		return int(ws.col), int(ws.row)
 	}
 	return 0, 0
+}
+
+// public: current terminal size in cells (falls back to 80x24 when not a tty)
+terminal_size :: proc() -> (int, int) {
+	w, h := terminal_get_size()
+	if w == 0 || h == 0 {
+		return 80, 24
+	}
+	return w, h
 }
 
 @(private)
