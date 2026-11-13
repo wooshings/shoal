@@ -19,9 +19,13 @@ main :: proc() {
 			w := ecs.spawn_entity(world)
 			ecs.add_component(world, w, term.Character{glyph = '#', x = i, y = 12, fg = .BrightBlack})
 		}
+		// camera (centered, zoom 1)
+		cam := ecs.spawn_entity(world)
+		ecs.add_component(world, cam, term.TerminalCamera{x = 40, y = 12, zoom = 1})
+
 		// hint text
 		t := ecs.spawn_entity(world)
-		ecs.add_component(world, t, term.Character{text = "arrows/WASD move, mouse clicks place dots, q quits", x = 1, y = 1, fg = .Cyan})
+		ecs.add_component(world, t, term.Character{text = "arrows/WASD move, mouse clicks place dots, +/- zoom, q quits", x = 1, y = 1, fg = .Cyan})
 	})
 
 	// movement + mouse interaction + quit
@@ -57,6 +61,14 @@ main :: proc() {
 		}
 
 		// quit on q
+		// zoom controls
+		cams := ecs.slice(world, term.TerminalCamera)
+		if len(cams) > 0 {
+			if ecs.is_pressed(ecs.EQUAL) { cams[0].zoom += 0.25 }
+			if ecs.is_pressed(ecs.MINUS) { cams[0].zoom -= 0.25 }
+			if cams[0].zoom < 0.25 { cams[0].zoom = 0.25 }
+		}
+
 		if ecs.is_pressed(ecs.Q) {
 			// restore and exit
 			fmt.print("\x1b[0m\x1b[?25h\n")

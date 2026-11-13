@@ -5,6 +5,31 @@ import "core:strings"
 import ecs "../../src"
 
 @(private)
+winsize :: struct {
+	ws_row:    u16,
+	ws_col:    u16,
+	ws_xpixel: u16,
+	ws_ypixel: u16,
+}
+
+foreign import libc "system:c"
+
+foreign libc {
+	ioctl :: proc(fd: i32, request: u64, arg: rawptr) -> i32 ---
+}
+
+TIOCGWINSZ :: u64(0x40087468)
+
+@(private)
+terminal_get_size :: proc() -> (int, int) {
+	ws: winsize
+	if ioctl(0, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
+		return int(ws.ws_col), int(ws.ws_row)
+	}
+	return 0, 0
+}
+
+@(private)
 fg_code :: proc(c: TermColor) -> int {
 	switch c {
 	case .Black:         return 30
@@ -56,12 +81,15 @@ shutdown_terminal :: proc() {
 
 @(private)
 render_terminal :: proc(world: ^ecs.World) {
-	width := 80
-	height := 24
-	if len(ecs.slice(world, Terminal)) > 0 {
-		t := ecs.slice(world, Terminal)[0]
-		if t.width > 0 { width = t.width }
-		if t.height > 0 { height = t.height }
+	width, height := terminal_get_size()
+	if width == 0 || height == 0 {
+		width = 80
+		height = 24
+		if len(ecs.slice(world, Terminal)) > 0 {
+			t := ecs.slice(world, Terminal)[0]
+			if t.width > 0 { width = t.width }
+			if t.height > 0 { height = t.height }
+		}
 	}
 
 	grid := make([]cell, width * height)
@@ -70,22 +98,47 @@ render_terminal :: proc(world: ^ecs.World) {
 		grid[i] = cell{glyph = ' ', fg = .White, bg = .Black, bold = false}
 	}
 
+	// resolve camera (if any)
+	cam_x, cam_y, cam_zoom: f32 = 0, 0, 1
+	has_cam := false
+	if len(ecs.slice(world, TerminalCamera)) > 0 {
+		c := ecs.slice(world, TerminalCamera)[0]
+		cam_x = c.x
+		cam_y = c.y
+		if c.zoom != 0 { cam_zoom = c.zoom } else { cam_zoom = 1 }
+		has_cam = true
+	}
+
+	to_screen :: proc(wx, wy: f32, has_cam: bool, cam_x, cam_y, cam_zoom: f32, tw, th: int) -> (int, int) {
+		if has_cam {
+			sx := (wx - cam_x) * cam_zoom + f32(tw) * 0.5
+			sy := (wy - cam_y) * cam_zoom + f32(th) * 0.5
+			return int(sx), int(sy)
+		}
+		return int(wx), int(wy)
+	}
+
 	chars := ecs.slice(world, Character)
 	for &ch in chars {
 		fg := ch.fg
 		if fg == .Black && ch.color != .Black { fg = ch.color }
 
 		if ch.text != "" {
-			cx := ch.x
+			wx := f32(ch.x)
+			wy := f32(ch.y)
+			cx := 0
+			_ = cx
+			ri := 0
 			for r in ch.text {
-				if cx >= 0 && cx < width && ch.y >= 0 && ch.y < height {
-					idx := ch.y * width + cx
+				sx, sy := to_screen(wx + f32(ri), wy, has_cam, cam_x, cam_y, cam_zoom, width, height)
+				if sx >= 0 && sx < width && sy >= 0 && sy < height {
+					idx := sy * width + sx
 					grid[idx].glyph = r
 					grid[idx].fg = fg
 					grid[idx].bg = ch.bg
 					grid[idx].bold = ch.bold
 				}
-				cx += 1
+				ri += 1
 			}
 		} else {
 			g := ch.glyph
@@ -93,8 +146,9 @@ render_terminal :: proc(world: ^ecs.World) {
 			if g == 0 { g = ch.symbol }
 			if g == 0 { g = ch.ch }
 			if g == 0 { g = ' ' }
-			if ch.x >= 0 && ch.x < width && ch.y >= 0 && ch.y < height {
-				idx := ch.y * width + ch.x
+			sx, sy := to_screen(f32(ch.x), f32(ch.y), has_cam, cam_x, cam_y, cam_zoom, width, height)
+			if sx >= 0 && sx < width && sy >= 0 && sy < height {
+				idx := sy * width + sx
 				grid[idx].glyph = g
 				grid[idx].fg = fg
 				grid[idx].bg = ch.bg

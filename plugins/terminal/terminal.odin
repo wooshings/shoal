@@ -45,4 +45,14 @@ Terminal :: struct {
 	height: int,
 }
 
+// a camera for the terminal renderer. its position (x, y) is the world point
+// that lands at the centre of the terminal, and zoom scales world units to
+// terminal cells. with no TerminalCamera in the world the renderer draws in
+// 1:1 cell space.
+TerminalCamera :: struct {
+	x:    f32,
+	y:    f32,
+	zoom: f32,
+}
+
 // raw-mode terminal input state is handled in input.odin.
