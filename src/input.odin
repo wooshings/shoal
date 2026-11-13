@@ -253,8 +253,10 @@ begin_input_frame :: proc() {
 	state.prev_mouse_pos = state.mouse_pos
 	state.prev_mouse_down = state.mouse_down
 
+	state.keys_down = {}
 	state.keys_pressed = {}
 	state.keys_released = {}
+	state.mouse_down = {}
 	state.mouse_pressed = {}
 	state.mouse_released = {}
 	state.mouse_delta = {0, 0}

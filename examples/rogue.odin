@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:math/rand"
 import ecs "../src"
@@ -464,6 +465,10 @@ main :: proc() {
 	})
 
 	ecs.add_system(&app, "update", proc(world: ^ecs.World) {
+		if ecs.is_pressed(ecs.Q) {
+			fmt.print("\x1b[0m\x1b[?25h\n")
+			os.exit(0)
+		}
 		if ecs.is_pressed(ecs.R) {
 			generate_level(1)
 			sync_render(world)
