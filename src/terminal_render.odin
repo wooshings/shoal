@@ -5,11 +5,15 @@ import "core:strings"
 
 @(private)
 startup_terminal :: proc() {
+	terminal_enable_raw_mode()
+	terminal_enable_mouse()
 	fmt.print("\x1b[?25l\x1b[2J\x1b[H")
 }
 
 @(private)
 shutdown_terminal :: proc() {
+	terminal_disable_mouse()
+	terminal_disable_raw_mode()
 	fmt.print("\x1b[0m\x1b[?25h\n")
 }
 
@@ -108,6 +112,8 @@ TerminalPlugin :: proc(app: ^App) {
 	}
 
 	add_system(app, "startup", startup_terminal)
+	init_system_set(app, "update", "terminal_input", before("default"))
+	add_system(app, "terminal_input", terminal_poll_input)
 	init_system_set(app, "update", "terminal_render", after("default"))
 	add_system(app, "terminal_render", render_terminal)
 	add_system(app, "destroy", shutdown_terminal)
