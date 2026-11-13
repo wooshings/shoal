@@ -90,6 +90,27 @@ DefaultPlugin :: proc(app: ^App) {
 
 }
 
+// headless variant of DefaultPlugin: runs the core ECS (timers, signals, and
+// audio) without opening a window, polling input, or touching textures. use
+// it with ecs.run_headless for dedicated servers and terminal games:
+//
+//	ecs.add_plugin(&app, ecs.HeadlessDefaultPlugin)
+//	ecs.run_headless(&app)
+HeadlessDefaultPlugin :: proc(app: ^App) {
+	add_plugin(app, AudioPlugin)
+
+	add_system(app, "update", run_timers)
+
+	// "post_update" clears every signal bus at the end of "update", same as
+	// DefaultPlugin, so headless systems get the same signal semantics
+	init_system_set(app, "update", "post_update", after("default"))
+	add_system(app, "post_update", signal_system)
+}
+
+// aliases for the headless default plugin
+DefaultHeadlessPlugin :: HeadlessDefaultPlugin
+HeadlessPlugin :: HeadlessDefaultPlugin
+
 @(private)
 update_cursor_position :: proc(world: ^World) {
 	cursor, _ := single(world, Cursor)
