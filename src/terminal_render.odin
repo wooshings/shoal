@@ -31,14 +31,33 @@ render_terminal :: proc(world: ^World) {
 
 	chars := slice(world, Character)
 	for &ch in chars {
-		if ch.x < 0 || ch.y < 0 || ch.x >= width || ch.y >= height {
+		if ch.y < 0 || ch.y >= height {
 			continue
 		}
-		idx := ch.y * width + ch.x
-		grid[idx].glyph = ch.glyph
-		grid[idx].fg = ch.fg
-		grid[idx].bg = ch.bg
-		grid[idx].bold = ch.bold
+		if ch.text != "" {
+			cx := ch.x
+			for r in ch.text {
+				if cx < 0 || cx >= width {
+					cx += 1
+					continue
+				}
+				idx := ch.y * width + cx
+				grid[idx].glyph = r
+				grid[idx].fg = ch.fg
+				grid[idx].bg = ch.bg
+				grid[idx].bold = ch.bold
+				cx += 1
+			}
+		} else {
+			if ch.x < 0 || ch.x >= width {
+				continue
+			}
+			idx := ch.y * width + ch.x
+			grid[idx].glyph = ch.glyph
+			grid[idx].fg = ch.fg
+			grid[idx].bg = ch.bg
+			grid[idx].bold = ch.bold
+		}
 	}
 
 	b := strings.builder_make()
