@@ -54,6 +54,10 @@ fg_code :: proc(c: TermColor) -> int {
 
 @(private)
 bg_code :: proc(c: TermColor) -> int {
+	// paint "black" as the terminal's default background (49), not ANSI
+	// black (40) — ANSI black is a theme gray that leaves visible patches
+	// over the emulator's real background color
+	if c == .Black { return 49 }
 	return fg_code(c) + 10
 }
 
