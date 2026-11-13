@@ -30,15 +30,21 @@ TermColor :: enum {
 // a single glyph placed on the terminal grid. the terminal render plugin
 // collects every Character component in the world each frame and draws it.
 Character :: struct {
-	// a single glyph. ignored when text is non-empty.
-	glyph: rune,
+	// a single glyph (aliases below for convenience). ignored when text is
+	// non-empty.
+	glyph:  rune,
+	char:   rune,
+	symbol: rune,
+	ch:     rune,
 	// a collection of characters drawn horizontally starting at (x, y).
-	text:  string,
-	x:     int,
-	y:     int,
-	fg:    TermColor,
-	bg:    TermColor,
-	bold:  bool,
+	text:   string,
+	x:      int,
+	y:      int,
+	// foreground/background colors. `color` is an alias for fg.
+	fg:     TermColor,
+	bg:     TermColor,
+	color:  TermColor,
+	bold:   bool,
 }
 
 // the terminal screen: its cell grid dimensions. the plugin spawns one of

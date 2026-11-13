@@ -43,7 +43,9 @@ render_terminal :: proc(world: ^World) {
 				}
 				idx := ch.y * width + cx
 				grid[idx].glyph = r
-				grid[idx].fg = ch.fg
+				fg := ch.fg
+				if fg == .Black && ch.color != .Black { fg = ch.color }
+				grid[idx].fg = fg
 				grid[idx].bg = ch.bg
 				grid[idx].bold = ch.bold
 				cx += 1
@@ -52,9 +54,16 @@ render_terminal :: proc(world: ^World) {
 			if ch.x < 0 || ch.x >= width {
 				continue
 			}
+			g := ch.glyph
+			if g == 0 { g = ch.char }
+			if g == 0 { g = ch.symbol }
+			if g == 0 { g = ch.ch }
+			if g == 0 { g = ' ' }
 			idx := ch.y * width + ch.x
-			grid[idx].glyph = ch.glyph
-			grid[idx].fg = ch.fg
+			grid[idx].glyph = g
+			fg := ch.fg
+			if fg == .Black && ch.color != .Black { fg = ch.color }
+			grid[idx].fg = fg
 			grid[idx].bg = ch.bg
 			grid[idx].bold = ch.bold
 		}
