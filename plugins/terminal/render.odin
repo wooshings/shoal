@@ -23,7 +23,7 @@ TIOCGWINSZ :: u64(0x40087468)
 @(private)
 terminal_get_size :: proc() -> (int, int) {
 	ws: winsize
-	if ioctl(0, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
+	if ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
 		return int(ws.ws_col), int(ws.ws_row)
 	}
 	return 0, 0
