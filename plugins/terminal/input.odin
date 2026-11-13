@@ -1,16 +1,12 @@
-package shoal
+package terminal
 
 import "core:fmt"
-import "core:strconv"
-import rl "vendor:raylib"
-
 import "core:os"
+import "core:strconv"
 import "core:unicode/utf8"
 import posix "core:sys/posix"
-
-// terminal input: reads stdin in raw mode and feeds the same global input
-// state the rest of the engine uses (ecs.is_pressed, ecs.mouse_position, ...),
-// so terminal games can use the standard input API.
+import rl "vendor:raylib"
+import ecs "../../src"
 
 @(private)
 stdin_fd :: posix.FD(0)
@@ -24,16 +20,13 @@ have_orig: bool
 @(private)
 raw_enabled: bool
 
-// enable raw mode: no echo, no canonical line buffering, non-blocking reads.
 terminal_enable_raw_mode :: proc() {
 	if posix.tcgetattr(stdin_fd, &orig_termios) != .OK {
 		return
 	}
 	have_orig = true
 	raw := orig_termios
-	// disable canonical mode and echo
 	raw.c_lflag -= posix.CLocal_Flags{.ICANON, .ECHO, .ECHOE, .ECHOK, .ECHONL, .ISIG}
-	// non-blocking: return immediately from read() with 0 bytes
 	raw.c_cc[.VMIN] = 0
 	raw.c_cc[.VTIME] = 0
 	if posix.tcsetattr(stdin_fd, posix.TC_Optional_Action.TCSAFLUSH, &raw) == .OK {
@@ -41,7 +34,6 @@ terminal_enable_raw_mode :: proc() {
 	}
 }
 
-// restore the original terminal settings.
 terminal_disable_raw_mode :: proc() {
 	if have_orig {
 		posix.tcsetattr(stdin_fd, posix.TC_Optional_Action.TCSAFLUSH, &orig_termios)
@@ -50,7 +42,6 @@ terminal_disable_raw_mode :: proc() {
 	}
 }
 
-// enable SGR (1006) mouse tracking so we get mouse events as escape seqs.
 terminal_enable_mouse :: proc() {
 	fmt.print("\x1b[?1000h\x1b[?1006h")
 }
@@ -59,45 +50,28 @@ terminal_disable_mouse :: proc() {
 	fmt.print("\x1b[?1006l\x1b[?1000l")
 }
 
-// read whatever is available on stdin right now and fold it into the global
-// input state. called once per frame by the terminal plugin's update system.
-terminal_poll_input :: proc(world: ^World) {
-	// roll prev state
-	state.prev_keys = state.keys_down
-	state.prev_mouse_pos = state.mouse_pos
-	state.prev_mouse_down = state.mouse_down
-
-	state.keys_pressed = {}
-	state.keys_released = {}
-	state.mouse_pressed = {}
-	state.mouse_released = {}
-	state.mouse_delta = {0, 0}
-	state.scroll = 0
+terminal_poll_input :: proc(world: ^ecs.World) {
+	ecs.begin_input_frame()
 
 	if !raw_enabled {
-		_ = world
+		ecs.end_input_frame()
 		return
 	}
 
 	buf: [4096]u8
 	n, err := os.read(os.stdin, buf[:])
 	if err != nil || n <= 0 {
-		state.has_prev = true
-		_ = world
+		ecs.end_input_frame()
 		return
 	}
 	data := buf[:n]
 
-	// parse escape sequences + printable bytes
 	i := 0
 	for i < len(data) {
 		b := data[i]
 		if b == 0x1b {
-			// escape sequence
 			if i+1 < len(data) && data[i+1] == '[' {
-				// CSI
 				j := i + 2
-				// collect params
 				start := j
 				for j < len(data) && data[j] >= 0x20 && data[j] <= 0x3f {
 					j += 1
@@ -106,47 +80,32 @@ terminal_poll_input :: proc(world: ^World) {
 				if j < len(data) {
 					final := data[j]
 					j += 1
-					// mouse SGR: [ ... M or m
 					if final == 'M' || final == 'm' {
-						// params like "<btn;x;y"
 						if len(params) > 0 && params[0] == '<' {
 							parts := split_params(params[1:])
 							if len(parts) >= 3 {
 								btn, _ := strconv.parse_int(parts[0])
 								x, _ := strconv.parse_int(parts[1])
 								y, _ := strconv.parse_int(parts[2])
-								state.mouse_pos = rl.Vector2{f32(x), f32(y)}
-								// buttons: 0 left, 1 middle, 2 right
-								mb: rl.MouseButton = .LEFT
+								ecs.set_mouse_position(rl.Vector2{f32(x), f32(y)})
+								mb := rl.MouseButton.LEFT
 								switch btn & 3 {
 								case 1: mb = .MIDDLE
 								case 2: mb = .RIGHT
 								}
 								down := final == 'M'
 								if btn >= 64 {
-									// scroll
-									if btn == 64 { state.scroll += 1 }
-									if btn == 65 { state.scroll -= 1 }
+									if btn == 64 { ecs.add_mouse_scroll(1) }
+									if btn == 65 { ecs.add_mouse_scroll(-1) }
 								} else {
-									if down {
-										if !state.mouse_down[mb] {
-											state.mouse_pressed[mb] = true
-										}
-										state.mouse_down[mb] = true
-									} else {
-										if state.mouse_down[mb] {
-											state.mouse_released[mb] = true
-										}
-										state.mouse_down[mb] = false
-									}
+									ecs.set_mouse_button_down(mb, down)
 								}
 							}
 						}
 					} else {
-						// arrow keys etc
 						key := csi_to_key(params, final)
 						if key != rl.KeyboardKey.KEY_NULL {
-							mark_key(key)
+							ecs.set_key_down(key, true)
 						}
 					}
 					i = j
@@ -154,46 +113,30 @@ terminal_poll_input :: proc(world: ^World) {
 					i += 1
 				}
 			} else {
-				// lone ESC
-				mark_key(rl.KeyboardKey.ESCAPE)
+				ecs.set_key_down(rl.KeyboardKey.ESCAPE, true)
 				i += 1
 			}
 		} else {
-			// decode one rune
 			r, size := utf8.decode_rune_in_bytes(data[i:])
 			if size == 0 { size = 1 }
 			if r == '\r' || r == '\n' {
-				mark_key(rl.KeyboardKey.ENTER)
+				ecs.set_key_down(rl.KeyboardKey.ENTER, true)
 			} else if r == 127 || r == 8 {
-				mark_key(rl.KeyboardKey.BACKSPACE)
+				ecs.set_key_down(rl.KeyboardKey.BACKSPACE, true)
 			} else if r == 9 {
-				mark_key(rl.KeyboardKey.TAB)
+				ecs.set_key_down(rl.KeyboardKey.TAB, true)
 			} else if r >= 32 {
-				// map printable to raylib key if it's a letter
-				k := rune_to_raylib_key(r)
+				k := rune_to_key(r)
 				if k != rl.KeyboardKey.KEY_NULL {
-					mark_key(k)
+					ecs.set_key_down(k, true)
 				}
-				// also store in a side channel? global state only keys; ok
 			}
 			i += size
 		}
 	}
 
-	state.has_prev = true
+	ecs.end_input_frame()
 	_ = world
-}
-
-@(private)
-mark_key :: proc(k: rl.KeyboardKey) {
-	state.keys_down[k] = true
-	if state.has_prev {
-		if !state.prev_keys[k] {
-			state.keys_pressed[k] = true
-		}
-	} else {
-		state.keys_pressed[k] = true
-	}
 }
 
 @(private)
@@ -204,7 +147,6 @@ csi_to_key :: proc(params: string, final: u8) -> rl.KeyboardKey {
 	if final == 'D' { return rl.KeyboardKey.LEFT }
 	if final == 'H' { return rl.KeyboardKey.HOME }
 	if final == 'F' { return rl.KeyboardKey.END }
-	// tilde codes
 	if final == '~' {
 		switch params {
 		case "1": return rl.KeyboardKey.HOME
@@ -218,7 +160,7 @@ csi_to_key :: proc(params: string, final: u8) -> rl.KeyboardKey {
 }
 
 @(private)
-rune_to_raylib_key :: proc(r: rune) -> rl.KeyboardKey {
+rune_to_key :: proc(r: rune) -> rl.KeyboardKey {
 	if r >= 'a' && r <= 'z' {
 		return rl.KeyboardKey(r - 'a' + 'A')
 	}
@@ -236,7 +178,6 @@ rune_to_raylib_key :: proc(r: rune) -> rl.KeyboardKey {
 
 @(private)
 split_params :: proc(s: string) -> []string {
-	// split on ';'
 	res := [dynamic]string{}
 	start := 0
 	for i := 0; i <= len(s); i += 1 {

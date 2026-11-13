@@ -13,21 +13,21 @@ main :: proc() {
 	ecs.add_system(&app, "startup", proc(world: ^ecs.World) {
 		// player
 		p := ecs.spawn_entity(world)
-		ecs.add_component(world, p, ecs.Character{glyph = '@', x = 10, y = 5, fg = .BrightGreen, bold = true})
+		ecs.add_component(world, p, term.Character{glyph = '@', x = 10, y = 5, fg = .BrightGreen, bold = true})
 		// a few walls
 		for i in 0 ..< 20 {
 			w := ecs.spawn_entity(world)
-			ecs.add_component(world, w, ecs.Character{glyph = '#', x = i, y = 12, fg = .BrightBlack})
+			ecs.add_component(world, w, term.Character{glyph = '#', x = i, y = 12, fg = .BrightBlack})
 		}
 		// hint text
 		t := ecs.spawn_entity(world)
-		ecs.add_component(world, t, ecs.Character{text = "arrows/WASD move, mouse clicks place dots, q quits", x = 1, y = 1, fg = .Cyan})
+		ecs.add_component(world, t, term.Character{text = "arrows/WASD move, mouse clicks place dots, q quits", x = 1, y = 1, fg = .Cyan})
 	})
 
 	// movement + mouse interaction + quit
 	ecs.add_system(&app, "update", proc(world: ^ecs.World) {
-		ents := ecs.slice_entity(world, ecs.Character)
-		comps := ecs.slice(world, ecs.Character)
+		ents := ecs.slice_entity(world, term.Character)
+		comps := ecs.slice(world, term.Character)
 		// find player (first '@'? just use entity 0)
 		if len(ents) == 0 { return }
 		// player is first spawned entity; locate by glyph
@@ -53,7 +53,7 @@ main :: proc() {
 			mx := int(ecs.mouse_position().x)
 			my := int(ecs.mouse_position().y)
 			d := ecs.spawn_entity(world)
-			ecs.add_component(world, d, ecs.Character{glyph = '*', x = mx, y = my, fg = .Yellow})
+			ecs.add_component(world, d, term.Character{glyph = '*', x = mx, y = my, fg = .Yellow})
 		}
 
 		// quit on q

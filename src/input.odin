@@ -241,3 +241,63 @@ InputPlugin :: proc(app: ^App) {
 	add_system(app, "input", update_input)
 	add_system(app, "destroy", shutdown_input)
 }
+// --- terminal input hooks -------------------------------------------------
+// public entry points so out-of-process input sources (the terminal plugin)
+// can feed the same global input state the raylib input plugin uses. a frame
+// is bracketed by begin_input_frame / end_input_frame; in between, callers
+// report keys/buttons/position/scroll. raylib's own InputPlugin does the same
+// thing internally, so the two never both run in the same app.
+
+begin_input_frame :: proc() {
+	state.prev_keys = state.keys_down
+	state.prev_mouse_pos = state.mouse_pos
+	state.prev_mouse_down = state.mouse_down
+
+	state.keys_pressed = {}
+	state.keys_released = {}
+	state.mouse_pressed = {}
+	state.mouse_released = {}
+	state.mouse_delta = {0, 0}
+	state.scroll = 0
+}
+
+end_input_frame :: proc() {
+	state.has_prev = true
+}
+
+set_key_down :: proc(key: rl.KeyboardKey, down: bool) {
+	state.keys_down[key] = down
+	if down {
+		if !state.has_prev || !state.prev_keys[key] {
+			state.keys_pressed[key] = true
+		}
+	} else {
+		if state.prev_keys[key] {
+			state.keys_released[key] = true
+		}
+	}
+}
+
+set_mouse_position :: proc(pos: rl.Vector2) {
+	state.mouse_pos = pos
+	if state.has_prev {
+		state.mouse_delta = pos - state.prev_mouse_pos
+	}
+}
+
+set_mouse_button_down :: proc(btn: rl.MouseButton, down: bool) {
+	state.mouse_down[btn] = down
+	if down {
+		if !state.prev_mouse_down[btn] {
+			state.mouse_pressed[btn] = true
+		}
+	} else {
+		if state.prev_mouse_down[btn] {
+			state.mouse_released[btn] = true
+		}
+	}
+}
+
+add_mouse_scroll :: proc(v: f32) {
+	state.scroll += v
+}
