@@ -4,6 +4,13 @@ import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
+// sentinel signal: writing it asks the frame loop to exit after the current
+// schedule boundary. signal_system skips clearing it so it survives "update".
+ExitApp :: struct {}
+
+// ask the running app to exit. safe to call from any system.
+exit :: proc() { write(ExitApp{}) }
+
 // shoal's out-of-the-box behavior. registers, in frame order:
 //
 //	startup     startup_window (InitWindow from the WindowComponent, 60 fps cap)
@@ -247,4 +254,5 @@ startup_window :: proc(world: ^World) {
 	window, _ := single(world, Window)
 	rl.InitWindow(window.width, window.height, strings.clone_to_cstring(window.title))
 	rl.SetTargetFPS(60)
+	rl.SetExitKey(rl.KeyboardKey(0))
 }

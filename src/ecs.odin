@@ -330,8 +330,10 @@ window :: proc(app: ^App, window_config: Window) {
 // run every plugin (in registration order), then the "startup" schedule once,
 // then the frame loop: "update" (whose walk ends with the "post_update" set,
 // clearing signal buses) -> "draw", over and over until rl.WindowShouldClose()
-// says stop, and finally the "destroy" schedule. world systems get handed the
-// app's own world, the same one run() is holding. there's no second copy.
+// says stop or an ExitApp signal is sent, and finally the "destroy" schedule.
+// world systems get handed the app's own world, the same one run() is holding.
+// there's no second copy. the app exits when an ExitApp signal is sent (or the
+// window is closed).
 //
 // each root schedule is walked in the order its child schedules (system sets)
 // were created. within each set, systems run in registration order.
@@ -345,18 +347,19 @@ run :: proc(app: ^App) {
 
 	for {
 		run_schedule(app, "update")
+		if len(read(ExitApp)) > 0 { break }
 		run_schedule(app, "draw")
-		if rl.WindowShouldClose() {
-			break
-		}
+		if len(read(ExitApp)) > 0 { break }
+		if rl.WindowShouldClose() { break }
 	}
 
 	run_schedule(app, "destroy")
 }
 
 // headless variant: no window, no draw, no WindowShouldClose check. runs
-// plugins + startup once, then loops update until the process is killed.
-// useful for dedicated servers.
+// plugins + startup once, then loops update until an ExitApp signal is sent
+// (or the process is killed). useful for dedicated servers. the app exits when
+// an ExitApp signal is sent.
 run_headless :: proc(app: ^App) {
 	for p in app.plugins {
 		p(app)
@@ -364,6 +367,7 @@ run_headless :: proc(app: ^App) {
 	run_schedule(app, "startup")
 	for {
 		run_schedule(app, "update")
+		if len(read(ExitApp)) > 0 { break }
 		coretime.sleep(16 * coretime.Millisecond)
 	}
 }

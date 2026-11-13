@@ -82,7 +82,8 @@ read :: proc($T: typeid) -> []T {
 // the rest of this frame and the next frame's "update" systems still read
 // them. the next frame's "draw" never does though, the clear gets there first
 signal_system :: proc() {
-	for _, e in buses {
+	for type_id, e in buses {
+		if type_id == typeid_of(ExitApp) { continue }
 		e.clear(e.bus)
 	}
 }

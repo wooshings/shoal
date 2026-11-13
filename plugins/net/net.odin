@@ -41,6 +41,24 @@ owned_entity :: proc(world: ^ecs.World) -> (ecs.Entity, bool) {
 	return 0, false
 }
 
+// client: ask the server to spawn (or reuse) an entity owned by this client.
+// sends one PACKET_INPUT packet with nid = 0; the server's nid == 0 path is
+// idempotent per owner, so repeated calls never spawn duplicates. minimal
+// examples use this to obtain an owned entity (the game itself spawns
+// players through the netgame PlayerState path and never calls this)
+request_spawn :: proc(x, y, rot: f32) {
+	if config.role != .Client || my_client_id == 0 { return }
+	buf: [dynamic]u8
+	append(&buf, PACKET_INPUT)
+	write_u32(&buf, 0) // nid = 0: spawn request
+	write_u32(&buf, my_client_id)
+	write_f32(&buf, x)
+	write_f32(&buf, y)
+	write_f32(&buf, rot)
+	netlib.send_udp(socket, buf[:], server_endpoint)
+	delete(buf)
+}
+
 // ---- component (lives in the plugin, not in src/) ------------------------
 
 // marks an entity as replicated over the network. the net plugin syncs all
@@ -79,6 +97,9 @@ register_signal :: proc($T: typeid) {
 		return raw_data(sigs), len(sigs), size_of(T)
 	}
 	emit :: proc(data: []u8) {
+		// guard against a malformed packet handing emit a slice shorter
+		// than the signal type
+		if len(data) < size_of(T) { return }
 		val: T
 		ptr := cast([^]u8)&val
 		for i in 0 ..< size_of(T) { ptr[i] = data[i] }
@@ -154,6 +175,9 @@ serialize_transform :: proc(world: ^ecs.World, entity: ecs.Entity, buf: ^[dynami
 }
 
 deserialize_transform :: proc(world: ^ecs.World, entity: ecs.Entity, data: []u8, off: ^int) {
+	if off^ < 0 || off^ > len(data) - 12 {
+		return
+	}
 	t, ok := ecs.try_get_component(world, entity, ecs.Transform)
 	if !ok {
 		ecs.add_component(world, entity, ecs.Transform{})
@@ -225,16 +249,22 @@ write_f32 :: proc(buf: ^[dynamic]u8, v: f32) {
 }
 
 @(private)
-read_u32 :: proc(data: []u8, off: ^int) -> u32 {
+read_u32 :: proc(data: []u8, off: ^int) -> (u32, bool) {
+	// a negative offset must fail here: it would otherwise index the slice
+	// below (and every later read would pass too, since off^ + 4 grows
+	// toward 0 from below)
+	if off^ < 0 || off^ > len(data) - 4 {
+		return 0, false
+	}
 	v := u32(data[off^]) | (u32(data[off^+1]) << 8) | (u32(data[off^+2]) << 16) | (u32(data[off^+3]) << 24)
 	off^ += 4
-	return v
+	return v, true
 }
 
 @(private)
-read_f32 :: proc(data: []u8, off: ^int) -> f32 {
-	bits := read_u32(data, off)
-	return transmute(f32)bits
+read_f32 :: proc(data: []u8, off: ^int) -> (f32, bool) {
+	bits, ok := read_u32(data, off)
+	return transmute(f32)bits, ok
 }
 
 @(private)
@@ -272,16 +302,19 @@ server_update :: proc(world: ^ecs.World) {
 		if n.id == 0 {
 			next_net_id += 1
 			n.id = next_net_id
-			n.owner = 0
 			entity_to_net[ents[i]] = n.id
 			net_to_entity[n.id] = ents[i]
 		}
 	}
 
-	// receive packets (non-blocking)
+	// drain the socket (non-blocking): a frame can carry more than one
+	// datagram when several clients are active
 	buf: [1024]byte
-	n, from, err := netlib.recv_udp(socket, buf[:])
-	if err == nil && n > 0 {
+	for {
+		n, from, err := netlib.recv_udp(socket, buf[:])
+		if err != nil || n <= 0 {
+			break
+		}
 		data := buf[:n]
 		if find_client(from) == -1 {
 			append(&client_endpoints, from)
@@ -308,22 +341,26 @@ server_update :: proc(world: ^ecs.World) {
 				}
 				fmt.println("net: client disconnected, id", cid)
 			}
-		} else if len(data) > 0 && data[0] == PACKET_WELCOME {
-			off := 1
-			cid := read_u32(data, &off)
-			my_client_id = cid
-			if !connected {
-				connected = true
-				ecs.write(ClientConnected{id = my_client_id})
-			}
-			fmt.println("net: welcome, client id", my_client_id)
 		} else if len(data) > 0 && data[0] == PACKET_SIGNAL {
 			off := 1
-			count := read_u32(data, &off)
-			for _ in 0 ..< count {
-				idx := read_u32(data, &off)
-				dlen := read_u32(data, &off)
-				if int(idx) < len(net_signals) {
+			count, ok := read_u32(data, &off)
+			if ok {
+				for _ in 0 ..< count {
+					idx, ok1 := read_u32(data, &off)
+					dlen, ok2 := read_u32(data, &off)
+					if !ok1 || !ok2 {
+						break
+					}
+					// unsigned bounds check: a length field >= 2^31 (or any
+					// value past the buffer) must never slice or advance
+					// off into negative territory
+					if u64(dlen) > u64(len(data) - off) {
+						break
+					}
+					if idx >= u32(len(net_signals)) {
+						off += int(dlen)
+						continue
+					}
 					net_signals[idx].emit(data[off:off+int(dlen)])
 					// rebroadcast to other clients
 					fwd: [dynamic]u8
@@ -338,17 +375,39 @@ server_update :: proc(world: ^ecs.World) {
 						}
 					}
 					delete(fwd)
+					off += int(dlen)
 				}
-				off += int(dlen)
 			}
 		} else if len(data) > 0 && data[0] == PACKET_INPUT {
 			off := 1
-			nid := read_u32(data, &off)
-			owner := read_u32(data, &off)
-			x := read_f32(data, &off)
-			y := read_f32(data, &off)
-			rot := read_f32(data, &off)
+			nid, ok_nid := read_u32(data, &off)
+			owner, ok_owner := read_u32(data, &off)
+			x, ok_x := read_f32(data, &off)
+			y, ok_y := read_f32(data, &off)
+			rot, ok_rot := read_f32(data, &off)
+			if !ok_nid || !ok_owner || !ok_x || !ok_y || !ok_rot {
+				continue
+			}
 			if nid == 0 {
+				// spawn request. idempotent per owner: reuse an existing
+				// Networked entity with the same owner instead of spawning
+				// another one, so repeated requests never accumulate ghosts
+				if owner != 0 {
+					all := ecs.slice_entity(world, Networked)
+					reused := false
+					for i in 0 ..< len(all) {
+						n := ecs.slice(world, Networked)[i]
+						if n.owner == owner {
+							if t, ok := ecs.try_get_component(world, all[i], ecs.Transform); ok {
+								t.translation = {x, y}
+								t.rotation = rot
+							}
+							reused = true
+							break
+						}
+					}
+					if reused { continue }
+				}
 				next_net_id += 1
 				nid = next_net_id
 				ent := ecs.spawn_entity(world)
@@ -386,7 +445,7 @@ server_update :: proc(world: ^ecs.World) {
 	for i in 0 ..< len(ents2) {
 		n := ecs.slice(world, Networked)[i]
 		ent := ents2[i]
-		t, _ := ecs.try_get_component(world, ent, ecs.Transform)
+		ecs.try_get_component(world, ent, ecs.Transform)
 		write_u32(&sbuf, n.id)
 		write_u32(&sbuf, n.owner)
 		// serialize all registered components that the entity has
@@ -398,7 +457,6 @@ server_update :: proc(world: ^ecs.World) {
 				// prepend a present flag + length before the data: rebuild
 				// We already appended data; insert flag+length at start.
 				// Simpler: rewrite: remove appended data, write flag, length, data.
-				data := sbuf[start:]
 				// drop the just-written bytes
 				resize(&sbuf, start)
 				append(&sbuf, u8(1))
@@ -441,7 +499,9 @@ client_init :: proc() {
 	server_endpoint = ep
 	fmt.println("net: client targeting", config.host, config.port)
 	connected = false
-	my_client_id = 1
+	// 0 is the "unknown" sentinel everywhere else (client_id, owned_entity,
+	// the game's owner comparisons) — seed it that way until WELCOME
+	my_client_id = 0
 }
 
 @(private)
@@ -456,41 +516,74 @@ client_update :: proc(world: ^ecs.World) {
 		data := buf[:n]
 		if len(data) > 0 && data[0] == PACKET_SIGNAL {
 			off := 1
-			count := read_u32(data, &off)
-			for _ in 0 ..< count {
-				idx := read_u32(data, &off)
-				dlen := read_u32(data, &off)
-				if int(idx) < len(net_signals) {
+			count, ok := read_u32(data, &off)
+			if ok {
+				for _ in 0 ..< count {
+					idx, ok1 := read_u32(data, &off)
+					dlen, ok2 := read_u32(data, &off)
+					if !ok1 || !ok2 {
+						break
+					}
+					// unsigned bounds check: same rule as the server path
+					if u64(dlen) > u64(len(data) - off) {
+						break
+					}
+					if idx >= u32(len(net_signals)) {
+						off += int(dlen)
+						continue
+					}
 					net_signals[idx].emit(data[off:off+int(dlen)])
+					off += int(dlen)
 				}
-				off += int(dlen)
+			}
+		} else if len(data) > 0 && data[0] == PACKET_WELCOME {
+			off := 1
+			cid, ok := read_u32(data, &off)
+			if ok {
+				my_client_id = cid
+				if !connected {
+					connected = true
+					ecs.write(ClientConnected{id = my_client_id})
+				}
+				fmt.println("net: welcome, client id", my_client_id)
 			}
 		} else if len(data) > 0 && data[0] == PACKET_SNAPSHOT {
 			connected = true
 			off := 1
-			count := read_u32(data, &off)
-			for _ in 0 ..< count {
-				nid := read_u32(data, &off)
-				owner := read_u32(data, &off)
-				ent, ok := net_to_entity[nid]
-				if !ok {
-					ent = ecs.spawn_entity(world)
-					ecs.add_component(world, ent, Networked{id = nid, owner = owner})
-					net_to_entity[nid] = ent
-				} else {
-					if n2, ok2 := ecs.try_get_component(world, ent, Networked); ok2 {
-						n2.owner = owner
+			count, ok := read_u32(data, &off)
+			if ok {
+				snapshot: for _ in 0 ..< count {
+					nid, ok_nid := read_u32(data, &off)
+					owner, ok_owner := read_u32(data, &off)
+					if !ok_nid || !ok_owner {
+						break snapshot
 					}
-				}
-				for r in replicated {
-					present := data[off]
-					off += 1
-					if present == 1 {
-						dlen := read_u32(data, &off)
-						sub_off := 0
-						sub := data[off:off+int(dlen)]
-						r.deserialize(world, ent, sub, &sub_off)
-						off += int(dlen)
+					ent, known := net_to_entity[nid]
+					if !known {
+						ent = ecs.spawn_entity(world)
+						ecs.add_component(world, ent, Networked{id = nid, owner = owner})
+						net_to_entity[nid] = ent
+					} else {
+						if n2, has_n := ecs.try_get_component(world, ent, Networked); has_n {
+							n2.owner = owner
+						}
+					}
+					for r in replicated {
+						if off >= len(data) {
+							break snapshot
+						}
+						present := data[off]
+						off += 1
+						if present == 1 {
+							dlen, ok3 := read_u32(data, &off)
+							if !ok3 || u64(dlen) > u64(len(data) - off) {
+								break snapshot
+							}
+							sub_off := 0
+							sub := data[off:off+int(dlen)]
+							r.deserialize(world, ent, sub, &sub_off)
+							off += int(dlen)
+						}
 					}
 				}
 			}
@@ -509,25 +602,6 @@ client_update :: proc(world: ^ecs.World) {
 	// throttle sends to 20 Hz
 	if tick_counter % 3 != 0 {
 		return
-	}
-
-	// spawn request if we don't own an entity yet
-	has_owned := false
-	for i in 0 ..< len(ecs.slice(world, Networked)) {
-		if ecs.slice(world, Networked)[i].owner == my_client_id && my_client_id != 0 {
-			has_owned = true
-		}
-	}
-	if !has_owned && my_client_id != 0 {
-		buf0: [dynamic]u8
-		append(&buf0, PACKET_INPUT)
-		write_u32(&buf0, 0)
-		write_u32(&buf0, my_client_id)
-		write_f32(&buf0, 400)
-		write_f32(&buf0, 400)
-		write_f32(&buf0, 0)
-		netlib.send_udp(socket, buf0[:], server_endpoint)
-		delete(buf0)
 	}
 
 	// send own player transform
@@ -567,12 +641,15 @@ auto_serialize :: proc($T: typeid, world: ^ecs.World, entity: ecs.Entity, buf: ^
 }
 
 auto_deserialize :: proc($T: typeid, world: ^ecs.World, entity: ecs.Entity, data: []u8, off: ^int) {
+	size := size_of(T)
+	if off^ < 0 || off^ > len(data) - size {
+		return
+	}
 	comp, ok := ecs.try_get_component(world, entity, T)
 	if !ok {
 		ecs.add_component(world, entity, T{})
 		comp, _ = ecs.try_get_component(world, entity, T)
 	}
-	size := size_of(T)
 	ptr := cast([^]u8)comp
 	for i in 0 ..< size {
 		ptr[i] = data[off^ + i]
