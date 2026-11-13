@@ -409,7 +409,7 @@ sync_render :: proc(world: ^ecs.World) {
 	if game_over {
 		sc.text = fmt.tprintf("YOU DIED on depth %d. Press R to restart.", player.depth)
 	} else {
-		sc.text = fmt.tprintf("Depth %d  HP %d/%d  ATK %d  DEF %d  Gold %d  (arrows move, r restart)", player.depth, player.hp, player.maxhp, player.atk, player.def, player.gold)
+		sc.text = "arrows/WASD move   R restart   Q quit"
 	}
 	sc.x = 0
 	sc.y = MAP_H
@@ -421,6 +421,19 @@ sync_render :: proc(world: ^ecs.World) {
 	if len(cams) > 0 {
 		cams[0].x = f32(player.x)
 		cams[0].y = f32(player.y)
+	}
+
+	// immediate-mode UI overlay — screen-fixed, stamped on top of the game
+	term.ui_begin()
+	if game_over {
+		term.ui_fill(0, 0, 46, .Red)
+		term.ui_label(1, 0, fmt.tprintf(" YOU DIED on depth %d — press R to restart ", player.depth), .White, .Red)
+	} else {
+		hp := fmt.tprintf(" HP %d/%d ", player.hp, player.maxhp)
+		stats := fmt.tprintf(" DEPTH %d   ATK %d   DEF %d   GOLD %d ", player.depth, player.atk, player.def, player.gold)
+		term.ui_fill(0, 0, len(hp)+len(stats), .BrightBlack)
+		term.ui_label(0, 0, hp, .BrightWhite, .Red)
+		term.ui_label(len(hp), 0, stats, .Black, .BrightYellow)
 	}
 }
 

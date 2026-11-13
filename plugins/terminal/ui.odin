@@ -1,6 +1,7 @@
 package terminal
 
 import "core:fmt"
+import "core:strings"
 import ecs "../../src"
 
 // ---- immediate-mode UI ----------------------------------------------------
@@ -32,8 +33,13 @@ ui_begin :: proc() {
 }
 
 // draw a text label at (x, y).
-ui_label :: proc(x, y: int, text: string, fg: TermColor = .White) {
-	append(&ui_items, UIItem{x = x, y = y, text = text, fg = fg, bg = .Black, bold = false})
+ui_label :: proc(x, y: int, text: string, fg: TermColor = .White, bg: TermColor = .Black) {
+	append(&ui_items, UIItem{x = x, y = y, text = text, fg = fg, bg = bg, bold = false})
+}
+
+// draw a solid filled bar (bg-colored spaces) — usable as a panel/HP bar.
+ui_fill :: proc(x, y, w: int, bg: TermColor) {
+	append(&ui_items, UIItem{x = x, y = y, text = strings.repeat(" ", w), fg = bg, bg = bg, bold = false})
 }
 
 // draw a button; returns true on the frame it is clicked.
