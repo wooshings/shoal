@@ -5,8 +5,6 @@ import "core:os"
 import ecs "../src"
 import net "../plugins/net"
 
-// example custom replicated component
-// @replicated
 Health :: struct {
 	value: i32,
 }
@@ -47,12 +45,12 @@ server_sim :: proc(world: ^ecs.World) {
 	ents := ecs.slice_entity(world, net.Networked)
 	for i in 0 ..< len(ents) {
 		n := ecs.slice(world, net.Networked)[i]
-		if n.owner != 0 { continue } // only move server-owned
+		if n.owner != 0 { continue }
 		tr, _ := ecs.try_get_component(world, ents[i], ecs.Transform)
 		tr.translation.x += 1
 		if tr.translation.x > 700 { tr.translation.x = 100 }
 	}
-	// periodically broadcast a game signal
+
 	@(static) counter: int
 	counter += 1
 	if counter % 120 == 0 {
@@ -60,5 +58,4 @@ server_sim :: proc(world: ^ecs.World) {
 	}
 }
 
-// example custom networked signal
 ScoreChanged :: struct { player: u32, score: i32 }

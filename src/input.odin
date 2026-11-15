@@ -3,14 +3,6 @@ package shoal
 import "core:fmt"
 import rl "vendor:raylib"
 
-// the raylib-backed input snapshot. polled once per frame by the plugin's
-// "input" set, which is anchored ahead of "default" in the "update" walk,
-// so every user update system reads a fresh, complete frame of state — same
-// anchoring trick audio_init uses in "startup".
-//
-// state is package-global (like the audio stream cache): there is exactly
-// one keyboard and one mouse per process, so there is nothing to spawn or
-// tear down.
 @(private)
 State :: struct {
 	has_prev: bool,
@@ -35,11 +27,9 @@ State :: struct {
 @(private)
 state: State
 
-// action name -> key. empty until the user calls bind().
 @(private)
 bindings: map[string]rl.KeyboardKey
 
-// recent key presses, stamped with rl.GetTime(), for input buffering.
 @(private)
 BufferEntry :: struct {
 	key:  rl.KeyboardKey,
@@ -49,7 +39,6 @@ BufferEntry :: struct {
 @(private)
 input_buffer: [dynamic]BufferEntry
 
-// read raylib's input once and refresh the snapshot.
 @(private)
 update_input :: proc(world: ^World) {
 	state.prev_keys = state.keys_down
@@ -114,7 +103,6 @@ update_input :: proc(world: ^World) {
 	_ = world
 }
 
-// --- query api ---
 is_down :: proc(key: rl.KeyboardKey) -> bool {
 	return state.keys_down[key]
 }
@@ -151,7 +139,6 @@ any_key_down :: proc() -> bool {
 	return false
 }
 
-// --- action bindings + input buffer ---
 bind :: proc(action: string, key: rl.KeyboardKey) {
 	bindings[action] = key
 }
@@ -232,7 +219,6 @@ shutdown_input :: proc() {
 	state = {}
 }
 
-// wire input polling into the app.
 InputPlugin :: proc(app: ^App) {
 	state = State{}
 	clear(&input_buffer)

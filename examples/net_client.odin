@@ -6,13 +6,10 @@ import ecs "../src"
 import net "../plugins/net"
 import rl "vendor:raylib"
 
-// example custom replicated component
-// @replicated
 Health :: struct {
 	value: i32,
 }
 
-// example custom networked signal
 ScoreChanged :: struct { player: u32, score: i32 }
 
 net_events_plugin :: proc(app: ^ecs.App) {

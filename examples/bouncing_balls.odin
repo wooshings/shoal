@@ -13,8 +13,7 @@ Ball :: struct {
 }
 
 main :: proc() {
-	// configure the window instead of the 800x600 "shoal window" default:
-	// must be before ecs.run(), add_plugin can be before or after this
+
 	ecs.window(&app, ecs.Window{width = 1024, height = 640, title = "bouncing balls"})
 
 	ecs.add_plugin(&app, ecs.DefaultPlugin)
@@ -28,19 +27,13 @@ main :: proc() {
 	ecs.run(&app)
 }
 
-// startup system taking the world: the window lives in it, so adjusting the
-// default WindowComponent is a world lookup now
 setup_window :: proc(world: ^ecs.World) {
 	window, _ := ecs.single(world, ecs.Window)
 	window.background = rl.BLACK
 }
 
-// startup system taking the world: spawn_entity wants it, and the balls'
-// components live inside it, no global storage to declare
 spawn_balls :: proc(world: ^ecs.World) {
-	// load once, share everywhere: load_sprite caches by path, so every ball
-	// references the same texture id. distinct texture ids defeat raylib's
-	// renderer batching — one draw call per batch instead of one per sprite
+
 	sprite := ecs.load_sprite("assets/gregory.png")
 	sprite.scale = {0.1, 0.1}
 	sprite.tint = rl.PURPLE

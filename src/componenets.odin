@@ -2,9 +2,6 @@ package shoal
 
 import rl "vendor:raylib"
 
-// what the app's window opens with: size, title, and the clear color.
-// DefaultPlugin opens the window from it at "startup" and paints the clear
-// color at "pre_draw" (inline in the "draw" schedule)
 Window :: struct {
 	width:      i32,
 	height:     i32,
@@ -12,34 +9,19 @@ Window :: struct {
 	background: rl.Color,
 }
 
-// the mouse position, refreshed every UPDATE by DefaultPlugin
 Cursor :: struct {
 	position: rl.Vector2,
 }
 
-// a texture DefaultPlugin draws at DRAW, placed by the same entity's
-// TransformComponent (so every sprite entity needs a Transform component
-// too). extended fields:
-//   source:   crop to a region of the texture (sprite sheets)
-//   scale:    scale the sprite (default 1.0, 1.0)
-//   tint:     color tint (default WHITE)
-//   flip_h/v: flip the sprite horizontally/vertically
 Sprite :: struct {
 	texture:  rl.Texture2D,
-	source:   rl.Rectangle,  // zero = whole texture
-	scale:    rl.Vector2,    // default 1.0, 1.0
-	tint:     rl.Color,      // default WHITE
+	source:   rl.Rectangle,
+	scale:    rl.Vector2,
+	tint:     rl.Color,
 	flip_h:   bool,
 	flip_v:   bool,
 }
 
-// build a sprite with the common defaults already in place — full texture,
-// natural size (1.0), white tint — so call sites only pass what they want
-// to change. odin only allows default values on procedures (struct fields
-// can't declare them), so this is the "defaults included" constructor:
-//
-//	sprite := ecs.sprite(tex)                       // natural size, untinted
-//	sprite := ecs.sprite(tex, scale = {0.2, 0.2})   // shrunk, purple below
 sprite :: proc(
 	texture: rl.Texture2D,
 	scale := rl.Vector2{1, 1},
@@ -49,35 +31,18 @@ sprite :: proc(
 	return Sprite{texture = texture, scale = scale, tint = tint, source = source}
 }
 
-// 2D translation + rotation, read back by draw_sprite when it places the
-// entity's SpriteComponent
 Transform :: struct {
 	translation: rl.Vector2,
 	rotation:    f32,
 }
 
-// marks its entity as a 2d camera. rendering through the camera is centered
-// on the look-at: this entity's own TransformComponent, whose translation is
-// the world point that appears at the viewport center and whose rotation is
-// the camera roll around that point — move the camera by writing the
-// transform, the same way you move any other entity. projection state lives
-// here:
-//   zoom: world scale (2.0 = everything twice as big), zero = 1.0
-// a world with no Camera component renders in plain screen space; with one,
-// the first-registered camera acts (see CameraPlugin in camera.odin)
 Camera :: struct {
 	zoom: f32,
 }
 
-// --- 3D ---
-
-// 3D transform: position, euler rotation (radians, pitch/yaw/roll), and
-// scale. read back by the model draw system when it places an entity's
-// ModelComponent. scale defaults to 1,1,1 so a bare transform3d() draws
-// unshrunk
 Transform3D :: struct {
 	translation: rl.Vector3,
-	rotation:    rl.Vector3, // euler radians (pitch, yaw, roll)
+	rotation:    rl.Vector3,
 	scale:       rl.Vector3,
 }
 
@@ -89,16 +54,6 @@ transform3d :: proc(
 	return Transform3D{translation = translation, rotation = rotation, scale = scale}
 }
 
-// marks its entity as a 3d camera. position comes from the entity's own
-// Transform3DComponent (so moving the camera is writing the transform, like
-// every other entity); everything else lives here:
-//   target:     world point the camera looks at (zero = one unit forward
-//               along +Z from the position)
-//   up:         up vector (zero = {0, 1, 0})
-//   fovy:       vertical field of view in degrees for perspective, or the
-//               near-plane height in world units for orthographic (0 = 45)
-//   projection: PERSPECTIVE (default) or ORTHOGRAPHIC
-// a world with no Camera3D component skips 3d camera mode entirely
 Camera3D :: struct {
 	target:     rl.Vector3,
 	up:         rl.Vector3,
@@ -115,9 +70,6 @@ camera3d :: proc(
 	return Camera3D{target = target, up = up, fovy = fovy, projection = projection}
 }
 
-// a 3D model the engine draws at DRAW, placed by the same entity's
-// Transform3DComponent. tint defaults to WHITE (no color change). models
-// are loaded from disk with load_model and cached by path, like sprites
 Model :: struct {
 	model: rl.Model,
 	tint:  rl.Color,
@@ -127,7 +79,132 @@ model :: proc(m: rl.Model, tint := rl.WHITE) -> Model {
 	return Model{model = m, tint = tint}
 }
 
-// components are plain struct declarations. the world holds every storage
-// internally, keyed by the component's typeid and created on first add (see
-// get_storage in entities.odin), so there's nothing to declare next to a
-// component
+Collider2D :: struct {
+	solid:   bool,
+	offset:  rl.Vector2,
+	width:   f32,
+	height:  f32,
+	size:    rl.Vector2,
+	radius:  f32,
+	layer:   u32,
+	mask:    u32,
+}
+
+Collider :: Collider2D
+Collider2d :: Collider2D
+Collision :: Collider2D
+Collision2D :: Collider2D
+Solid :: Collider2D
+Solid2D :: Collider2D
+BoxCollider2D :: Collider2D
+SphereCollider2D :: Collider2D
+AABB2D :: Collider2D
+BoundingCircle :: Collider2D
+
+collider2d :: proc(
+	width: f32 = 1,
+	height: f32 = 1,
+	solid: bool = true,
+	offset := rl.Vector2{},
+	radius: f32 = 0,
+) -> Collider2D {
+	return Collider2D{
+		solid  = solid,
+		offset = offset,
+		width  = width,
+		height = height,
+		size   = {width, height},
+		radius = radius,
+	}
+}
+
+Collider3D :: struct {
+	solid:   bool,
+	offset:  rl.Vector3,
+	width:   f32,
+	height:  f32,
+	length:  f32,
+	size:    rl.Vector3,
+	radius:  f32,
+	layer:   u32,
+	mask:    u32,
+}
+
+Collider3d :: Collider3D
+Collision3D :: Collider3D
+Solid3D :: Collider3D
+BoxCollider :: Collider3D
+BoxCollider3D :: Collider3D
+SphereCollider :: Collider3D
+SphereCollider3D :: Collider3D
+AABB :: Collider3D
+AABB3D :: Collider3D
+BoundingBox :: Collider3D
+
+collider3d :: proc(
+	width: f32 = 1,
+	height: f32 = 1,
+	length: f32 = 1,
+	solid: bool = true,
+	offset := rl.Vector3{},
+	radius: f32 = 0,
+) -> Collider3D {
+	return Collider3D{
+		solid  = solid,
+		offset = offset,
+		width  = width,
+		height = height,
+		length = length,
+		size   = {width, height, length},
+		radius = radius,
+	}
+}
+
+RayCollider2D :: struct {
+	solid:     bool,
+	origin:    rl.Vector2,
+	direction: rl.Vector2,
+	length:    f32,
+	offset:    rl.Vector2,
+	layer:     u32,
+	mask:      u32,
+}
+
+RayCollider2d :: RayCollider2D
+RaycastCollider2D :: RayCollider2D
+Ray2D :: RayCollider2D
+Ray2d :: RayCollider2D
+
+raycollider2d :: proc(
+	direction := rl.Vector2{1, 0},
+	length: f32 = 100,
+	solid: bool = false,
+	offset := rl.Vector2{},
+) -> RayCollider2D {
+	return RayCollider2D{solid = solid, direction = direction, length = length, offset = offset}
+}
+
+RayCollider3D :: struct {
+	solid:     bool,
+	origin:    rl.Vector3,
+	direction: rl.Vector3,
+	length:    f32,
+	offset:    rl.Vector3,
+	layer:     u32,
+	mask:      u32,
+}
+
+RayCollider3d :: RayCollider3D
+RaycastCollider3D :: RayCollider3D
+Ray3D :: RayCollider3D
+Ray3d :: RayCollider3D
+Ray :: RayCollider3D
+
+raycollider3d :: proc(
+	direction := rl.Vector3{0, 0, 1},
+	length: f32 = 100,
+	solid: bool = false,
+	offset := rl.Vector3{},
+) -> RayCollider3D {
+	return RayCollider3D{solid = solid, direction = direction, length = length, offset = offset}
+}

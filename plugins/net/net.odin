@@ -4,8 +4,6 @@ import "core:fmt"
 import netlib "core:net"
 import ecs "../../src"
 
-// ---- configuration -------------------------------------------------------
-
 Role :: enum { Server, Client }
 
 Config :: struct {
@@ -26,10 +24,6 @@ is_client :: proc() -> bool { return config.role == .Client }
 
 client_id :: proc() -> u32 { return my_client_id }
 
-// the replicated entity owned by this client (if any): the entity whose
-// Networked.owner matches this client's id. returns (entity, true) on a
-// client that has spawned/owns one, (0, false) otherwise. on a server this
-// always returns (0, false)
 owned_entity :: proc(world: ^ecs.World) -> (ecs.Entity, bool) {
 	if config.role != .Client { return 0, false }
 	ents := ecs.slice_entity(world, Networked)
@@ -41,16 +35,11 @@ owned_entity :: proc(world: ^ecs.World) -> (ecs.Entity, bool) {
 	return 0, false
 }
 
-// client: ask the server to spawn (or reuse) an entity owned by this client.
-// sends one PACKET_INPUT packet with nid = 0; the server's nid == 0 path is
-// idempotent per owner, so repeated calls never spawn duplicates. minimal
-// examples use this to obtain an owned entity (the game itself spawns
-// players through the netgame PlayerState path and never calls this)
 request_spawn :: proc(x, y, rot: f32) {
 	if config.role != .Client || my_client_id == 0 { return }
 	buf: [dynamic]u8
 	append(&buf, PACKET_INPUT)
-	write_u32(&buf, 0) // nid = 0: spawn request
+	write_u32(&buf, 0)
 	write_u32(&buf, my_client_id)
 	write_f32(&buf, x)
 	write_f32(&buf, y)
@@ -59,24 +48,13 @@ request_spawn :: proc(x, y, rot: f32) {
 	delete(buf)
 }
 
-// ---- component (lives in the plugin, not in src/) ------------------------
-
-// marks an entity as replicated over the network. the net plugin syncs all
-// registered (replicable) components on this entity between server and
-// clients automatically.
 Networked :: struct {
 	id:    u32,
 	owner: u32,
 }
 
-// signals emitted by the net plugin (read with ecs.read(net.ClientConnected))
 ClientConnected    :: struct { id: u32 }
 ClientDisconnected :: struct { id: u32 }
-
-// ---- networked signals --------------------------------------------------
-// signals (ecs.write/ecs.read) are in-process. register_signal makes a signal
-// type travel over the network: write_signal(val) on one peer, read it on
-// others via ecs.read(T) (the net plugin re-emits it into the local bus).
 
 NetSignalType :: struct {
 	type_id:      typeid,
@@ -97,8 +75,7 @@ register_signal :: proc($T: typeid) {
 		return raw_data(sigs), len(sigs), size_of(T)
 	}
 	emit :: proc(data: []u8) {
-		// guard against a malformed packet handing emit a slice shorter
-		// than the signal type
+
 		if len(data) < size_of(T) { return }
 		val: T
 		ptr := cast([^]u8)&val
@@ -108,7 +85,6 @@ register_signal :: proc($T: typeid) {
 	append(&net_signals, NetSignalType{type_id = typeid_of(T), read_pending = read_pending, emit = emit})
 }
 
-// broadcast a signal value to peers
 write_signal :: proc(val: $T) {
 	idx := -1
 	for i in 0 ..< len(net_signals) {
@@ -134,13 +110,6 @@ write_signal :: proc(val: $T) {
 	delete(buf)
 }
 
-// ---- replicated component registry --------------------------------------
-// any component type can be replicated by registering serialize/deserialize
-// procs. Transform is registered automatically. Register your own in a
-// startup system or plugin:
-//
-//   net.register_replicated(MyComp, serialize_mycomp, deserialize_mycomp)
-
 Replicator :: struct {
 	type_id:    typeid,
 	serialize:   proc(world: ^ecs.World, entity: ecs.Entity, buf: ^[dynamic]u8) -> int,
@@ -156,12 +125,11 @@ register_replicated :: proc(
 	deserialize: proc(world: ^ecs.World, entity: ecs.Entity, data: []u8, off: ^int),
 ) {
 	for r in replicated {
-		if r.type_id == type_id { return } // already registered
+		if r.type_id == type_id { return }
 	}
 	append(&replicated, Replicator{type_id = type_id, serialize = serialize, deserialize = deserialize})
 }
 
-// default Transform serializer
 serialize_transform :: proc(world: ^ecs.World, entity: ecs.Entity, buf: ^[dynamic]u8) -> int {
 	t, ok := ecs.try_get_component(world, entity, ecs.Transform)
 	if !ok { return 0 }
@@ -193,8 +161,6 @@ deserialize_transform :: proc(world: ^ecs.World, entity: ecs.Entity, data: []u8,
 	t.translation.y = y
 	t.rotation = rot
 }
-
-// ---- state --------------------------------------------------------------
 
 @(private)
 socket: netlib.UDP_Socket
@@ -229,13 +195,10 @@ server_endpoint: netlib.Endpoint
 @(private)
 tick_counter: int
 
-// packet tags
 PACKET_SNAPSHOT :: u8(1)
 PACKET_INPUT    :: u8(2)
 PACKET_SIGNAL   :: u8(4)
 PACKET_WELCOME  :: u8(5)
-
-// ---- helpers ------------------------------------------------------------
 
 @(private)
 write_u32 :: proc(buf: ^[dynamic]u8, v: u32) {
@@ -250,9 +213,7 @@ write_f32 :: proc(buf: ^[dynamic]u8, v: f32) {
 
 @(private)
 read_u32 :: proc(data: []u8, off: ^int) -> (u32, bool) {
-	// a negative offset must fail here: it would otherwise index the slice
-	// below (and every later read would pass too, since off^ + 4 grows
-	// toward 0 from below)
+
 	if off^ < 0 || off^ > len(data) - 4 {
 		return 0, false
 	}
@@ -277,8 +238,6 @@ find_client :: proc(ep: netlib.Endpoint) -> int {
 	return -1
 }
 
-// ---- server -------------------------------------------------------------
-
 @(private)
 server_init :: proc() {
 	addr, _ := netlib.parse_endpoint(fmt.tprintf("0.0.0.0:%d", config.port))
@@ -295,7 +254,7 @@ server_init :: proc() {
 
 @(private)
 server_update :: proc(world: ^ecs.World) {
-	// assign net ids to newly spawned Networked entities
+
 	ents := ecs.slice_entity(world, Networked)
 	for i in 0 ..< len(ents) {
 		n := &ecs.slice(world, Networked)[i]
@@ -307,8 +266,6 @@ server_update :: proc(world: ^ecs.World) {
 		}
 	}
 
-	// drain the socket (non-blocking): a frame can carry more than one
-	// datagram when several clients are active
 	buf: [1024]byte
 	for {
 		n, from, err := netlib.recv_udp(socket, buf[:])
@@ -329,7 +286,7 @@ server_update :: proc(world: ^ecs.World) {
 			netlib.send_udp(socket, wbuf[:], from)
 			delete(wbuf)
 		}
-		if len(data) > 0 && data[0] == 3 { // disconnect
+		if len(data) > 0 && data[0] == 3 {
 			if cid, ok := client_ids[from]; ok {
 				ecs.write(ClientDisconnected{id = cid})
 				delete_key(&client_ids, from)
@@ -351,9 +308,7 @@ server_update :: proc(world: ^ecs.World) {
 					if !ok1 || !ok2 {
 						break
 					}
-					// unsigned bounds check: a length field >= 2^31 (or any
-					// value past the buffer) must never slice or advance
-					// off into negative territory
+
 					if u64(dlen) > u64(len(data) - off) {
 						break
 					}
@@ -362,7 +317,7 @@ server_update :: proc(world: ^ecs.World) {
 						continue
 					}
 					net_signals[idx].emit(data[off:off+int(dlen)])
-					// rebroadcast to other clients
+
 					fwd: [dynamic]u8
 					append(&fwd, PACKET_SIGNAL)
 					write_u32(&fwd, 1)
@@ -389,9 +344,7 @@ server_update :: proc(world: ^ecs.World) {
 				continue
 			}
 			if nid == 0 {
-				// spawn request. idempotent per owner: reuse an existing
-				// Networked entity with the same owner instead of spawning
-				// another one, so repeated requests never accumulate ghosts
+
 				if owner != 0 {
 					all := ecs.slice_entity(world, Networked)
 					reused := false
@@ -435,7 +388,6 @@ server_update :: proc(world: ^ecs.World) {
 		}
 	}
 
-	// broadcast snapshot (throttled to 20 Hz)
 	if tick_counter % 3 != 0 {
 		return
 	}
@@ -448,27 +400,23 @@ server_update :: proc(world: ^ecs.World) {
 		ecs.try_get_component(world, ent, ecs.Transform)
 		write_u32(&sbuf, n.id)
 		write_u32(&sbuf, n.owner)
-		// serialize all registered components that the entity has
-		// (we serialize all registered types; missing ones write a 0 flag)
+
 		for r in replicated {
 			start := len(sbuf)
 			n := r.serialize(world, ent, &sbuf)
 			if n > 0 {
-				// prepend a present flag + length before the data: rebuild
-				// We already appended data; insert flag+length at start.
-				// Simpler: rewrite: remove appended data, write flag, length, data.
-				// drop the just-written bytes
+
 				resize(&sbuf, start)
 				append(&sbuf, u8(1))
 				write_u32(&sbuf, u32(n))
-				// re-serialize
+
 				r.serialize(world, ent, &sbuf)
 			} else {
 				append(&sbuf, u8(0))
 			}
 		}
 	}
-	// prepend tag
+
 	tagged: [dynamic]u8
 	append(&tagged, PACKET_SNAPSHOT)
 	for b in sbuf { append(&tagged, b) }
@@ -479,8 +427,6 @@ server_update :: proc(world: ^ecs.World) {
 	}
 	delete(tagged)
 }
-
-// ---- client -------------------------------------------------------------
 
 @(private)
 client_init :: proc() {
@@ -499,14 +445,13 @@ client_init :: proc() {
 	server_endpoint = ep
 	fmt.println("net: client targeting", config.host, config.port)
 	connected = false
-	// 0 is the "unknown" sentinel everywhere else (client_id, owned_entity,
-	// the game's owner comparisons) — seed it that way until WELCOME
+
 	my_client_id = 0
 }
 
 @(private)
 client_update :: proc(world: ^ecs.World) {
-	// receive
+
 	buf: [1024]byte
 	for {
 		n, from, err := netlib.recv_udp(socket, buf[:])
@@ -524,7 +469,7 @@ client_update :: proc(world: ^ecs.World) {
 					if !ok1 || !ok2 {
 						break
 					}
-					// unsigned bounds check: same rule as the server path
+
 					if u64(dlen) > u64(len(data) - off) {
 						break
 					}
@@ -590,7 +535,6 @@ client_update :: proc(world: ^ecs.World) {
 		}
 	}
 
-	// retry until connected
 	if !connected {
 		ping: [dynamic]u8
 		append(&ping, u8(0))
@@ -599,12 +543,10 @@ client_update :: proc(world: ^ecs.World) {
 		delete(ping)
 	}
 
-	// throttle sends to 20 Hz
 	if tick_counter % 3 != 0 {
 		return
 	}
 
-	// send own player transform
 	for i in 0 ..< len(ecs.slice(world, Networked)) {
 		n := ecs.slice(world, Networked)[i]
 		if n.owner == my_client_id && my_client_id != 0 {
@@ -623,11 +565,6 @@ client_update :: proc(world: ^ecs.World) {
 		}
 	}
 }
-
-// ---- auto (inferred) replication -----------------------------------------
-// for flat, value-type components, the engine can infer serialization by
-// copying the struct's raw bytes — no hand-written procs needed.
-// usage: net.replicate(MyComp)  (or net.register_replicated_auto(MyComp))
 
 auto_serialize :: proc($T: typeid, world: ^ecs.World, entity: ecs.Entity, buf: ^[dynamic]u8) -> int {
 	comp, ok := ecs.try_get_component(world, entity, T)
@@ -667,12 +604,9 @@ register_replicated_auto :: proc($T: typeid) {
 	register_replicated(typeid_of(T), ser, deser)
 }
 
-// convenience alias
 replicate :: proc($T: typeid) {
 	register_replicated_auto(T)
 }
-
-// ---- plugin -------------------------------------------------------------
 
 @(private)
 net_update :: proc(world: ^ecs.World) {
@@ -686,7 +620,7 @@ net_update :: proc(world: ^ecs.World) {
 
 @(private)
 net_init :: proc() {
-	// register Transform as a replicated component by default
+
 	register_replicated(typeid_of(ecs.Transform), serialize_transform, deserialize_transform)
 	if config.role == .Server {
 		server_init()

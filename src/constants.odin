@@ -2,9 +2,6 @@ package shoal
 
 import rl "vendor:raylib"
 
-// re-exported raylib keycodes so callers can write ecs.SPACE instead of
-// importing raylib just for key constants. values are identical to
-// rl.KeyboardKey, so they interop freely.
 A :: rl.KeyboardKey.A
 APOSTROPHE :: rl.KeyboardKey.APOSTROPHE
 B :: rl.KeyboardKey.B
@@ -116,7 +113,6 @@ Y :: rl.KeyboardKey.Y
 Z :: rl.KeyboardKey.Z
 ZERO :: rl.KeyboardKey.ZERO
 
-// mouse buttons, prefixed MB_ to avoid collisions with key names
 MB_BACK :: rl.MouseButton.BACK
 MB_EXTRA :: rl.MouseButton.EXTRA
 MB_FORWARD :: rl.MouseButton.FORWARD

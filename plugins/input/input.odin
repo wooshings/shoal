@@ -1,9 +1,5 @@
 package input
 
-// thin facade over shoal's promoted input module: keeps the `input.`
-// namespace (input.is_pressed, input.SPACE, ...) without a circular import,
-// since the implementation lives in src/ (package shoal) and plugins may
-// only depend on src/, never the other way around.
 import ecs "../../src"
 
 is_down :: ecs.is_down
@@ -28,6 +24,4 @@ consume_any_buffered :: ecs.consume_any_buffered
 consume_key_buffered :: ecs.consume_key_buffered
 clear_buffer :: ecs.clear_buffer
 
-// InputPlugin is now part of ecs.DefaultPlugin; this alias keeps existing
-// call sites working.
 InputPlugin :: ecs.InputPlugin

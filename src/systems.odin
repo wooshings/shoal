@@ -4,35 +4,14 @@ import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
-// sentinel signal: writing it asks the frame loop to exit after the current
-// schedule boundary. signal_system skips clearing it so it survives "update".
 ExitApp :: struct {}
 
-// ask the running app to exit. safe to call from any system.
 exit :: proc() { write(ExitApp{}) }
 
-// shoal's out-of-the-box behavior. registers, in frame order:
-//
-//	startup     startup_window (InitWindow from the WindowComponent, 60 fps cap)
-//	update      run_timers, update_cursor_position, then the "post_update"
-//	            set (signal_system clears every signal bus)
-//	draw        pre_draw (BeginDrawing + ClearBackground) -> default
-//	            (draw_sprite) -> your declared sets -> post_draw (EndDrawing)
-//	destroy     unload_textures (cached sprite textures), CloseWindow, then
-//	            the audio plugin's shutdown (unload streams, close device)
-//
-// and spawns two entities: a display holding the WindowComponent the
-// window opens from — the user's own if they configured one with window()
-// before run(), otherwise 800x600 "shoal window", black background — and
-// a cursor holding a CursorComponent. add it before your own systems if
-// you want theirs to run first; order within a schedule is registration order
 DefaultPlugin :: proc(app: ^App) {
-	// a plugin is one of the few callers that holds an ^App, so it can reach
-	// the world through it and set up entities before the frame loop starts
+
 	world := get_world(app)
-	// adopt a window the user configured before run() with window() — size
-	// and title must be in place before startup_window runs InitWindow —
-	// and spawn the out-of-the-box default only when there is none
+
 	if len(slice(world, Window)) == 0 {
 		display := spawn_entity(world)
 		add_component(world, display, Window{800, 600, "shoal window", rl.BLACK})
@@ -43,24 +22,10 @@ DefaultPlugin :: proc(app: ^App) {
 
 	add_plugin(app, AudioPlugin)
 	add_plugin(app, InputPlugin)
-	// the window opens in a dedicated "window" set that the plugin declares
-	// ahead of the implicit default set. set walk order follows declaration
-	// order, not registration order, so user startup systems registered in
-	// main() run with an open window no matter when add_plugin was called —
-	// while the window itself still never opens at registration time.
-	// (InitWindow must run on the main thread on macOS, and the test runner
-	// runs tests on spawned threads, so opening windows inside DefaultPlugin
-	// would trap the whole engine test suite)
+
 	init_system_set(app, "startup", "window", before("default"))
 	add_system(app, "window", startup_window)
 
-	// a plugin runs when run() starts, i.e. after main() has declared and
-	// filled its sets — so the draw pipeline is anchored by name instead of
-	// registration order: "pre_draw" is forced to the front (before() with a
-	// missing anchor falls back to the front), the engine's own "default"
-	// set goes right after it, and "post_draw" is declared last, which
-	// appends it after every set main() declared. BeginDrawing always wraps
-	// everything, EndDrawing always runs last
 	init_system_set(app, "draw", "pre_draw", before("default"))
 	init_system_set(app, "draw", "default", after("pre_draw"))
 	add_system(app, "pre_draw", proc(world: ^World) {
@@ -72,7 +37,7 @@ DefaultPlugin :: proc(app: ^App) {
 		rl.BeginDrawing()
 		rl.ClearBackground(bg)
 	})
-	// the root name addresses the engine's own "default" set in "draw"
+
 	add_system(app, "draw", draw_sprite)
 	init_system_set(app, "draw", "post_draw")
 	add_system(app, "post_draw", proc() {rl.EndDrawing()})
@@ -80,18 +45,9 @@ DefaultPlugin :: proc(app: ^App) {
 	add_system(app, "update", run_timers)
 	add_system(app, "update", update_cursor_position)
 
-	// "post_update" is a child of "update", anchored right after the default
-	// set: user logic registered on "update" (and any sets main() declared)
-	// runs first, then the signal buses clear, then draw. the run_timers
-	// calls above create the default set first, so this anchor resolves
-	// instead of falling back to append
 	init_system_set(app, "update", "post_update", after("default"))
 	add_system(app, "post_update", signal_system)
 
-	// destroy is a real root schedule now (created here), so cleanup runs
-	// exactly once, after the frame loop — not every frame under "update".
-	// cached textures unload before CloseWindow (registration order within
-	// a set), since UnloadTexture needs the GL context alive
 	add_system(app, "destroy", unload_textures)
 	add_system(app, "destroy", proc() {rl.CloseWindow()})
 
@@ -103,11 +59,6 @@ update_cursor_position :: proc(world: ^World) {
 	cursor.position = rl.GetMousePosition()
 }
 
-// draw a sprite using DrawTexturePro, respecting source rect, scale,
-// tint, flip, and rotation from TransformComponent. uses zero values
-// (empty Rectangle, empty Color) as defaults: empty source means the
-// full texture, empty tint means white (no color change). backward
-// compatible: a sprite with no extended fields draws exactly as before.
 @(private)
 draw_sprite :: proc(world: ^World) {
 	zero_rect := rl.Rectangle{}
@@ -117,7 +68,6 @@ draw_sprite :: proc(world: ^World) {
 	for &v, i in components {
 		transform := get_component(world, entities[i], Transform)
 
-		// source rect: zero means the whole texture
 		source := v.source
 		if source == zero_rect {
 			source = rl.Rectangle {
@@ -128,18 +78,13 @@ draw_sprite :: proc(world: ^World) {
 			}
 		}
 
-		// scale is a local copy: zero values mean 1.0 for the draw, but
-		// nothing is written back to storage. a draw system must not have
-		// side effects on component data
 		scale := v.scale
 		if scale.x == 0 {scale.x = 1}
 		if scale.y == 0 {scale.y = 1}
 
-		// destination size: source scaled
 		dest_w := source.width * scale.x
 		dest_h := source.height * scale.y
 
-		// flip by negating destination size (DrawTexturePro handles this)
 		if v.flip_h {
 			dest_w = -dest_w
 		}
@@ -147,10 +92,8 @@ draw_sprite :: proc(world: ^World) {
 			dest_h = -dest_h
 		}
 
-		// origin at center of source (rotation pivot) — Vector2 is positional
 		origin := rl.Vector2{source.width * 0.5 * scale.x, source.height * 0.5 * scale.y}
 
-		// destination rectangle (top-left from Transform, size from scale+flip)
 		dest := rl.Rectangle {
 			x      = transform.translation.x,
 			y      = transform.translation.y,
@@ -158,7 +101,6 @@ draw_sprite :: proc(world: ^World) {
 			height = dest_h,
 		}
 
-		// tint: default WHITE means no color change
 		tint := v.tint
 		if tint == zero_color {
 			tint = rl.WHITE
@@ -168,17 +110,8 @@ draw_sprite :: proc(world: ^World) {
 	}
 }
 
-// textures are cached by path — the path is the handle, same rule as audio:
-// first call loads from disk, every call after returns the same texture. the
-// cache owns every texture and frees them all at "destroy". public so
-// callers can see what is loaded (the path is the handle, so the map is the
-// list of handles)
 textures: map[string]rl.Texture
 
-// cache lookup or disk load. panics on a path that can't be loaded: raylib
-// returns a zeroed texture (id 0) on failure and drawing it renders nothing —
-// a typo'd asset path would just show blank forever. same fail-fast rule as
-// play_sound and add_system
 @(private)
 get_texture :: proc(path: string) -> rl.Texture {
 	if t, ok := textures[path]; ok {
@@ -192,8 +125,6 @@ get_texture :: proc(path: string) -> rl.Texture {
 	return t
 }
 
-// free every cached texture. registered ahead of CloseWindow — UnloadTexture
-// needs the GL context alive. public so callers can flush the cache themselves
 unload_textures :: proc() {
 	for _, t in textures {
 		rl.UnloadTexture(t)
@@ -201,28 +132,12 @@ unload_textures :: proc() {
 	delete(textures)
 }
 
-// load a sprite from a file path. returns a Sprite with the loaded texture
-// and default extended fields (full source, 1.0 scale, white tint). textures
-// are cached by path: repeated calls return the same texture instead of
-// reloading, so spawning a hundred entities from one png costs one load.
-// the cache owns the textures — there is no per-sprite unload; everything
-// is freed at "destroy". a path that can't be loaded panics with the path
-//
-//     sprite := load_sprite("images/player.png")
-//     ecs.add_component(world, entity, sprite)
 load_sprite :: proc(path: string) -> Sprite {
 	texture := get_texture(path)
-	// scale/tint/source fall back to the Sprite field defaults
+
 	return sprite(texture)
 }
 
-// load a sprite sheet and split it into individual sprites.
-// cols and rows define the grid. returns a slice of Sprites, one per cell.
-// the sheet's texture is cached by path like load_sprite, and all returned
-// sprites share that one cached texture
-//
-//     sprites := load_sprite_sheet("images/sprites.png", 4, 3)
-//     // sprites[0] is top-left, sprites[11] is bottom-right
 load_sprite_sheet :: proc(path: string, cols, rows: int) -> [dynamic]Sprite {
 	texture := get_texture(path)
 
