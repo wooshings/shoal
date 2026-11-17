@@ -31,8 +31,8 @@ Schedule :: struct {
 }
 
 System :: struct {
-	kind:       u8,
-	proc_run:   proc(),
+	kind:           u8,
+	proc_run:       proc(),
 	proc_run_world: proc(^World),
 }
 
@@ -257,6 +257,7 @@ run_schedule :: proc(app: ^App, schedule: string) {
 		for s in get_system(app, schedule, set) {
 			run_system(app, s)
 		}
+		run_scene_systems(app, schedule, set)
 	}
 }
 

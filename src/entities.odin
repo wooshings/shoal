@@ -142,3 +142,23 @@ try_get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> (compone
 	}
 	return &storage.dense[storage.sparse[e]], true
 }
+
+remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {
+	storage := get_storage(world, T)
+	e := u32(entity)
+	if e >= u32(len(storage.sparse)) { return }
+	idx := storage.sparse[e]
+	if idx == -1 { return }
+	last := len(storage.dense) - 1
+	if idx != last && last >= 0 {
+		storage.dense[idx] = storage.dense[last]
+		storage.entities[idx] = storage.entities[last]
+		moved := storage.entities[idx]
+		storage.sparse[u32(moved)] = idx
+	}
+	if len(storage.dense) > 0 {
+		resize(&storage.dense, len(storage.dense) - 1)
+		resize(&storage.entities, len(storage.entities) - 1)
+	}
+	storage.sparse[e] = -1
+}
